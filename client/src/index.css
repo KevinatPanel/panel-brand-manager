@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+   Panel base styles
+   -------------------------------------------------------------------------- */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-space text-text-primary font-sans antialiased;
+  }
+
+  /* All numeric values (dollars, day counts) use tabular-nums so columns of
+     digits stay aligned. The face is Inter (see tailwind mono), which has a
+     plain, unslashed zero. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Status labels + eyebrows: Inter, 8px, 600, all-caps, 0.12em tracking. */
+  .eyebrow {
+    @apply font-sans uppercase;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+  }
+
+  /* Standard hairline-bordered card surface. */
+  .panel-card {
+    @apply bg-card border border-hairline transition-colors;
+  }
+  .panel-card:hover {
+    @apply bg-card-hover;
+  }
+}
+
+/* Thin, low-contrast scrollbars to match the dark surface. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,11 @@
+{
+  "name": "panel-sales-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panel brand team internal sales cycle tracker — outreach to first conversion. Frontend talks directly to Supabase (Postgres + Auth).",
+  "scripts": {
+    "install:all": "npm install --prefix client",
+    "dev": "npm run dev --prefix client",
+    "build": "npm run build --prefix client"
+  }
+}
