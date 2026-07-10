@@ -2,6 +2,7 @@
 // Client mirror of the stage framework (see server/src/stages.js).
 // Keep labels/codes in sync with the backend if they ever change.
 // ---------------------------------------------------------------------------
+import { todayInput } from './dates.js';
 
 export const STAGES = [
   { code: 'P1', label: 'Target', group: 'prospecting' },
@@ -49,6 +50,16 @@ export function nextStageCode(code) {
 }
 
 export const OWNERS = ['Tom', 'Raven', 'Andrew', 'Kevin'];
+
+// Resolve a signed-in user's email to an OWNERS name, e.g.
+// tom@panelforcreators.com -> 'Tom' (matched on the local part,
+// case-insensitively). Returns null if there's no match (e.g. the
+// local-dev-only bypass account) — callers should fall back gracefully.
+export function ownerFromEmail(email) {
+  if (!email) return null;
+  const local = email.split('@')[0]?.toLowerCase();
+  return OWNERS.find((o) => o.toLowerCase() === local) ?? null;
+}
 export const SOURCES = ['Outbound', 'Inbound', 'Referral'];
 export const CHANNELS = ['Email', 'LinkedIn', 'Slack', 'Mixed'];
 
@@ -56,6 +67,21 @@ export const CHANNELS = ['Email', 'LinkedIn', 'Slack', 'Mixed'];
 export const COMPANY_STATUSES = ['Researching', 'Contacted', 'Active', 'Passed'];
 export const TOUCH_TYPES = ['Email', 'LinkedIn', 'Slack', 'Call'];
 export const TOUCH_OUTCOMES = ['No Response', 'Responded', 'Booked', 'Completed', 'Other'];
+
+// Stakeholder roles on a deal (client-validated only, no DB check constraint,
+// same convention as current_stage/touch_type).
+export const STAKEHOLDER_ROLES = ['Champion', 'Economic Buyer', 'Blocker', 'Influencer', 'Other'];
+
+// Fallback used before app_settings' deal_health row has loaded. The actual,
+// admin-editable value lives in the DB (see api.js getHealthConfig/enrichDeal).
+export const DEFAULT_HEALTH_THRESHOLD_DAYS = 7;
+
+// A task is overdue once it's still open and its due date has passed.
+// Never stored — always computed at read/render time.
+export function isTaskOverdue(task) {
+  if (!task || task.status !== 'open' || !task.due_date) return false;
+  return new Date(task.due_date) < new Date(todayInput());
+}
 
 // Color bucket for "days in stage": green 0–7, yellow 8–14, red 15+.
 export function daysInStageColor(days) {

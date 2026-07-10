@@ -27,6 +27,17 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0016 | `0016_deal_summaries_refresh_contact_id.sql` | Refresh `deal_summaries` view |
 | 0017 | `0017_deal_summaries_pipeline_entered.sql` | Add `pipeline_entered_at` to `deal_summaries` |
 | 0018 | `0018_drop_activation_surface.sql` | Drop Activation Surface schema (tables + `ensure_activation_brand`) |
+| 0019 | `0019_deal_stakeholders.sql` | `deal_stakeholders` table + `set_primary_stakeholder()` RPC |
+| 0020 | `0020_deal_stakeholders_migrate_contact.sql` | Backfill `deals.contact_id` into `deal_stakeholders` |
+| 0021 | `0021_deal_tasks.sql` | `deal_tasks` table |
+| 0022 | `0022_deal_notes.sql` | `deal_notes` table |
+| 0023 | `0023_deal_attachments_storage.sql` | `deal_attachments` table + `deal-attachments` Storage bucket |
+| 0024 | `0024_stage_exit_criteria.sql` | `stage_exit_criteria` + `deal_stage_checklist` tables |
+| 0025 | `0025_related_deals.sql` | `deal_relations` table |
+| 0026 | `0026_app_settings.sql` | `app_settings` key/value table (deal health threshold) |
+| 0027 | `0027_deal_summaries_stakeholder_health.sql` | Add `last_touch_in_stage` + primary stakeholder columns to `deal_summaries` |
+| 0028 | `0028_harden_set_primary_stakeholder_search_path.sql` | Pin `search_path` on `set_primary_stakeholder()` (same hardening as 0004) |
+| 0029 | `0029_drop_related_deals.sql` | Drop `deal_relations` (Related Deals feature removed before shipping) |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number

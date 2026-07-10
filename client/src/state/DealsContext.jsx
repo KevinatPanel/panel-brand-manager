@@ -47,8 +47,18 @@ export function DealsProvider({ children }) {
     setSelectedId((prev) => (prev === next ? prev : next));
   }, [location.pathname, navigate]);
 
-  const openDeal = useCallback((id) => navigate(`/pipeline/${id}`), [navigate]);
-  const closeDeal = useCallback(() => navigate('/pipeline', { replace: true }), [navigate]);
+  // Preserve the board's filter query string (?q=&owner=&channel=&stale=)
+  // across opening/closing the slide-out, so it survives round-tripping
+  // through /pipeline/:dealId the same way it already survives everything
+  // else about this URL-driven pattern.
+  const openDeal = useCallback(
+    (id) => navigate(`/pipeline/${id}${location.search}`),
+    [navigate, location.search],
+  );
+  const closeDeal = useCallback(
+    () => navigate(`/pipeline${location.search}`, { replace: true }),
+    [navigate, location.search],
+  );
 
   const value = {
     deals,

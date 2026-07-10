@@ -3,24 +3,24 @@ import { api } from '../lib/api.js';
 import { useDeals } from '../state/DealsContext.jsx';
 import {
   STAGE_LABELS,
-  OWNERS,
-  SOURCES,
-  CHANNELS,
   TOUCH_TYPES,
   TOUCH_OUTCOMES,
   nextStageCode,
-  formatCurrency,
 } from '../lib/stages.js';
 import { SlideOver } from './Overlay.jsx';
-import { Field, Input, Select, Button, Eyebrow } from './ui.jsx';
+import { Field, Input, Select, Button, Eyebrow, IconButton } from './ui.jsx';
 import ContactSelect from './ContactSelect.jsx';
+import DealOverviewFields from './deal/DealOverviewFields.jsx';
 import { fmtDate, toDateInput, todayInput } from '../lib/dates.js';
 import { gmail } from '../lib/gmail.js';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 // Slide-in panel showing one deal in full, with inline editing, stage
 // transitions (auto-logged server-side), lost handling, and the touch log.
 export default function DealDetailPanel() {
   const { selectedId, closeDeal, refresh } = useDeals();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [deal, setDeal] = useState(null);
   const [verticals, setVerticals] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -106,9 +106,21 @@ export default function DealDetailPanel() {
                 className="bg-transparent text-text-primary text-[18px] font-medium outline-none w-full"
               />
             </div>
-            <button onClick={closeDeal} className="text-text-muted hover:text-text-primary text-[13px] ml-3">
-              ✕
-            </button>
+            <div className="flex items-center gap-1.5 ml-3 shrink-0">
+              <IconButton
+                icon="expand"
+                title="Open full record"
+                aria-label="Open full record"
+                onClick={() =>
+                  navigate(`/deals/${deal.id}`, {
+                    state: { boardSearch: location.search.replace(/^\?/, '') },
+                  })
+                }
+              />
+              <button onClick={closeDeal} className="text-text-muted hover:text-text-primary text-[13px]">
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Stage actions */}
@@ -164,57 +176,15 @@ export default function DealDetailPanel() {
           </div>
 
           {/* Editable fields */}
-          <div className="px-5 py-4 border-b border-hairline grid grid-cols-2 gap-3">
-            <Field label="Owner">
-              <Select value={deal.owner ?? ''} onChange={(e) => patch({ owner: e.target.value })}>
-                <option value="">Unassigned</option>
-                {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
-              </Select>
-            </Field>
-            <Field label="Vertical">
-              <Select value={deal.vertical ?? ''} onChange={(e) => patch({ vertical: e.target.value })}>
-                <option value="">Unsorted</option>
-                {verticals.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
-                {/* Preserve a legacy free-text vertical not in the list. */}
-                {deal.vertical && !verticals.some((v) => v.name === deal.vertical) && (
-                  <option value={deal.vertical}>{deal.vertical}</option>
-                )}
-              </Select>
-            </Field>
-            <Field label="Source">
-              <Select value={deal.source ?? ''} onChange={(e) => patch({ source: e.target.value })}>
-                <option value="">—</option>
-                {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </Field>
-            <Field label="Channel">
-              <Select value={deal.channel ?? ''} onChange={(e) => patch({ channel: e.target.value })}>
-                <option value="">—</option>
-                {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </Field>
-            <Field label="Pilot Spend (USD)">
-              <Input
-                type="number"
-                min="0"
-                defaultValue={deal.pilot_spend ?? ''}
-                onBlur={(e) => patch({ pilot_spend: e.target.value === '' ? null : Number(e.target.value) })}
-                className="font-mono"
+          <div className="px-5 py-4 border-b border-hairline space-y-3">
+            <DealOverviewFields deal={deal} verticals={verticals} patch={patch} />
+            <Field label="Point of Contact">
+              <ContactSelect
+                value={deal.contact_id ?? ''}
+                disabled={busy}
+                onChange={(e) => patch({ contact_id: e.target.value })}
               />
             </Field>
-            <div className="col-span-2">
-              <Field label="Point of Contact">
-                <ContactSelect
-                  value={deal.contact_id ?? ''}
-                  disabled={busy}
-                  onChange={(e) => patch({ contact_id: e.target.value })}
-                />
-              </Field>
-            </div>
-            <div className="self-end">
-              <Eyebrow className="mb-1">Days in pipeline</Eyebrow>
-              <span className="font-mono text-[13px] text-text-primary">{deal.days_in_pipeline}d</span>
-            </div>
           </div>
 
           {/* Stage history timeline — entry dates are editable so historical

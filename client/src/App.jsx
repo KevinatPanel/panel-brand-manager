@@ -9,10 +9,12 @@ import DealDetailPanel from './components/DealDetailPanel.jsx';
 import LeadDetailPanel from './components/LeadDetailPanel.jsx';
 import HomeView from './views/HomeView.jsx';
 import PipelineView from './views/PipelineView.jsx';
+import DealView from './views/DealView.jsx';
 import ClientView from './views/ClientView.jsx';
 import LeadsView from './views/LeadsView.jsx';
 import PeopleView from './views/PeopleView.jsx';
 import ScoringConfigView from './views/ScoringConfigView.jsx';
+import StageCriteriaConfigView from './views/StageCriteriaConfigView.jsx';
 import SettingsView from './views/SettingsView.jsx';
 import ReviewQueueView from './views/ReviewQueueView.jsx';
 import { InboxProvider } from './state/InboxContext.jsx';
@@ -69,12 +71,14 @@ export default function App() {
               <Route path="/home" element={<HomeView />} />
               <Route path="/pipeline" element={<PipelineView />} />
               <Route path="/pipeline/:dealId" element={<PipelineView />} />
+              <Route path="/deals/:dealId" element={<DealView />} />
               <Route path="/clients/:id" element={<ClientView />} />
               <Route path="/leads" element={<LeadsView />} />
               <Route path="/leads/:leadId" element={<LeadsView />} />
               <Route path="/people" element={<PeopleView />} />
               <Route path="/people/:personId" element={<PeopleView />} />
               <Route path="/scoring-config" element={<ScoringConfigView />} />
+              <Route path="/stage-criteria" element={<StageCriteriaConfigView />} />
               <Route path="/settings" element={<SettingsView />} />
               {/* OAuth callback redirects to /integrations?connected=1 — keep it
                   mapped to Settings so the round-trip lands on this page. */}

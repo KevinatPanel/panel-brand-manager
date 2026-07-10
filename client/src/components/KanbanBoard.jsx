@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DealCard from './DealCard.jsx';
 import { Eyebrow } from './ui.jsx';
 
@@ -81,9 +81,28 @@ function Column({ code, label, deals, collapsible, onCardClick, onMoveCard }) {
 // columns: [{ code, label, deals, collapsible? }]
 // topOffset: total height of chrome above the board (header, optional toolbar),
 // so the scroll area fills the rest of the viewport. Defaults to the bare header.
-export default function KanbanBoard({ columns, onCardClick, onMoveCard, topOffset = '4rem' }) {
+// scrollKey: distinguishes saved horizontal-scroll positions per filter
+// combination (e.g. the pipeline board's search-param string) — a full-page
+// navigation away and back (unlike the slide-out overlay) unmounts/remounts
+// this component, so scroll position is persisted to sessionStorage rather
+// than relying on the DOM surviving.
+export default function KanbanBoard({ columns, onCardClick, onMoveCard, topOffset = '4rem', scrollKey = '' }) {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = sessionStorage.getItem(`board-scroll:${scrollKey}`);
+    el.scrollLeft = saved != null ? Number(saved) : 0;
+  }, [scrollKey]);
+
   return (
-    <div className="flex overflow-x-auto border-r border-hairline" style={{ height: `calc(100vh - ${topOffset})` }}>
+    <div
+      ref={scrollRef}
+      onScroll={(e) => sessionStorage.setItem(`board-scroll:${scrollKey}`, String(e.currentTarget.scrollLeft))}
+      className="flex overflow-x-auto border-r border-hairline"
+      style={{ height: `calc(100vh - ${topOffset})` }}
+    >
       {columns.map((col) => (
         <Column key={col.code} {...col} onCardClick={onCardClick} onMoveCard={onMoveCard} />
       ))}

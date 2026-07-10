@@ -30,7 +30,10 @@ export default function DealCard({ deal, onClick }) {
           <div className="text-text-primary text-[13px] font-medium truncate">
             {deal.brand_name}
           </div>
-          <div className="text-text-secondary text-[12px] mt-0.5">{deal.owner ?? '—'}</div>
+          <div className="text-text-secondary text-[12px] mt-0.5 truncate">
+            {deal.owner ?? '—'}
+            {deal.primary_stakeholder_name ? ` · ${deal.primary_stakeholder_name}` : ''}
+          </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {stale && (

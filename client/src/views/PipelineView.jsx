@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
 import { SALES_STAGES, STAGE_LABELS, isStaleInStage } from '../lib/stages.js';
 import { api } from '../lib/api.js';
@@ -12,14 +13,32 @@ import { Button, Input, Select } from '../components/ui.jsx';
 // LOST column.
 export default function PipelineView() {
   const { deals, loading, error, openDeal, refresh } = useDeals();
+  const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
 
-  // Search + filter state. These narrow the cards shown in every stage column
-  // at once so the board stays scannable with a large brand list.
-  const [query, setQuery] = useState('');
-  const [owner, setOwner] = useState('');
-  const [channel, setChannel] = useState('');
-  const [staleOnly, setStaleOnly] = useState(false);
+  // Search + filter state lives in the URL (?q=&owner=&channel=&stale=1), not
+  // component state — the board is a real route that a full deal page
+  // navigation away and back will unmount/remount, and this codebase's own
+  // convention (see DealsContext) is that anything that should survive that
+  // belongs in the URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q') ?? '';
+  const owner = searchParams.get('owner') ?? '';
+  const channel = searchParams.get('channel') ?? '';
+  const staleOnly = searchParams.get('stale') === '1';
+
+  function updateParams(patch) {
+    const next = new URLSearchParams(searchParams);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    setSearchParams(next, { replace: true });
+  }
+  const setQuery = (v) => updateParams({ q: v });
+  const setOwner = (v) => updateParams({ owner: v });
+  const setChannel = (v) => updateParams({ channel: v });
+  const setStaleOnly = (v) => updateParams({ stale: v ? '1' : '' });
 
   // Distinct owners/channels present in the data, for the filter dropdowns.
   const owners = useMemo(
@@ -95,6 +114,7 @@ export default function PipelineView() {
   return (
     <div>
       <ViewHeader title="Pipeline" subtitle={subtitle}>
+        <Button variant="secondary" onClick={() => navigate('/stage-criteria')}>Stage Criteria</Button>
         <Button variant="primary" onClick={() => setAdding(true)}>+ Add Deal</Button>
       </ViewHeader>
 
@@ -128,7 +148,7 @@ export default function PipelineView() {
         right={
           <>
             <button
-              onClick={() => setStaleOnly((v) => !v)}
+              onClick={() => setStaleOnly(!staleOnly)}
               className={`px-3 py-2 text-[13px] whitespace-nowrap border transition-colors ${
                 staleOnly
                   ? 'border-red-500/40 text-red-400 bg-red-500/10'
@@ -149,7 +169,13 @@ export default function PipelineView() {
       ) : error ? (
         <div className="px-6 py-10 text-red-400 text-[13px]">{error}</div>
       ) : (
-        <KanbanBoard columns={columns} onCardClick={openDeal} onMoveCard={handleMoveCard} topOffset="7rem" />
+        <KanbanBoard
+          columns={columns}
+          onCardClick={openDeal}
+          onMoveCard={handleMoveCard}
+          topOffset="7rem"
+          scrollKey={searchParams.toString()}
+        />
       )}
 
       {adding && <AddDealModal onClose={() => setAdding(false)} onCreated={refresh} />}

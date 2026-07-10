@@ -2,11 +2,25 @@
 // Date helpers shared across views.
 // ---------------------------------------------------------------------------
 
-// Human-readable date (e.g. "Jun 9, 2026").
+// Human-readable date (e.g. "Jun 9, 2026"). For full timestamps (has a time
+// component) — a plain "YYYY-MM-DD" date-only string parses as UTC midnight
+// per the ECMAScript date string spec, which toLocaleDateString then renders
+// in the local zone, silently shifting it a day back in zones behind UTC. Use
+// fmtDateOnly for date-only values (e.g. deal_tasks.due_date).
 export const fmtDate = (iso) =>
   iso
     ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '—';
+
+// Human-readable date for a plain "YYYY-MM-DD" value (no time component) —
+// builds the Date from explicit local Y/M/D components instead of parsing the
+// string directly, so it can't shift a day in either direction depending on zone.
+export function fmtDateOnly(dateStr) {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return '—';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 // ISO timestamp -> "YYYY-MM-DD" in local time, for <input type="date"> values.
 export function toDateInput(iso) {
