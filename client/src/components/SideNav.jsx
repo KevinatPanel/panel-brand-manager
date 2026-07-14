@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { Eyebrow } from './ui.jsx';
 import { useAuth } from '../state/AuthContext.jsx';
 import { useInbox } from '../state/InboxContext.jsx';
 import { useLeads } from '../state/LeadsContext.jsx';
 import { initialsFromEmail } from '../lib/account.js';
 import GlobalSearch from './GlobalSearch.jsx';
+import AddLeadModal from './AddLeadModal.jsx';
 
 // Sidebar width is user-resizable within these bounds and remembered across
 // reloads. 208px is the original w-52 default.
@@ -51,8 +52,10 @@ const SECTIONS = [
 export default function SideNav() {
   const { user, signOut } = useAuth();
   const { pending } = useInbox();
-  const { leads } = useLeads();
+  const { leads, verticals, refresh } = useLeads();
+  const navigate = useNavigate();
   const [width, setWidth] = useState(loadWidth);
+  const [addingClient, setAddingClient] = useState(false);
   const asideRef = useRef(null);
 
   // A company is a client once it's marked is_client — toggled manually from its
@@ -91,7 +94,7 @@ export default function SideNav() {
       {/* Wordmark — height matches the ViewHeader so the dividers line up. */}
       <div className="px-5 h-16 flex flex-col justify-center border-b border-hairline">
         <span className="text-text-primary font-semibold tracking-tight text-[15px]">Panel</span>
-        <span className="eyebrow text-text-muted mt-0.5">Sales Tracker</span>
+        <span className="eyebrow text-text-muted mt-0.5">Brand Manager</span>
       </div>
 
       {/* Global search across deals + leads */}
@@ -137,8 +140,15 @@ export default function SideNav() {
 
         {/* Clients — one entry per client, each with its own space. */}
         <div className="mb-5">
-          <div className="px-5 mb-1.5">
+          <div className="px-5 mb-1.5 flex items-center justify-between">
             <Eyebrow>Clients</Eyebrow>
+            <button
+              onClick={() => setAddingClient(true)}
+              title="New client"
+              className="text-text-muted hover:text-text-primary text-[13px] leading-none transition-colors"
+            >
+              +
+            </button>
           </div>
           {clients.length === 0 ? (
             <div className="px-5 text-text-disabled text-[12px]">No clients yet</div>
@@ -164,6 +174,18 @@ export default function SideNav() {
             ))
           )}
         </div>
+
+        {addingClient && (
+          <AddLeadModal
+            asClient
+            verticals={verticals}
+            onClose={() => setAddingClient(false)}
+            onCreated={(created) => {
+              refresh();
+              navigate(`/clients/${created.id}`);
+            }}
+          />
+        )}
       </nav>
 
       {/* Signed-in person — links to Settings; sign out alongside. */}

@@ -45,7 +45,7 @@ export default function LoginView() {
       <div className="w-full max-w-sm">
         <div className="mb-8">
           <div className="text-text-primary font-semibold tracking-tight text-[18px]">Panel</div>
-          <Eyebrow className="text-text-muted mt-1">Sales Tracker</Eyebrow>
+          <Eyebrow className="text-text-muted mt-1">Brand Manager</Eyebrow>
         </div>
 
         {sent ? (

@@ -1,4 +1,4 @@
-# Panel — Sales Tracker
+# Panel — Brand Manager
 
 An internal tool for Panel's brand team to manage deals from first outreach to
 first client conversion. Built to be handed off to a tech team later, so the
@@ -71,7 +71,7 @@ pre-create each team member (magic-link, no password). The client passes
 ## Project structure
 
 ```
-/panel-sales-tracker
+/panel-brand-manager
   /client                React frontend (Vite + Tailwind + supabase-js)
     /src/lib             api.js (data layer), scoring, metrics, supabaseClient
     /src/state           Auth + Deals/Leads context

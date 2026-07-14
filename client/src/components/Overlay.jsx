@@ -10,7 +10,7 @@ function Backdrop({ onClose, children, justify }) {
 
   return (
     <div
-      className={`fixed inset-0 z-30 bg-black/50 flex ${justify}`}
+      className={`fixed inset-0 z-30 bg-black/85 flex ${justify}`}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       {children}

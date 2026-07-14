@@ -855,6 +855,7 @@ export const api = {
           headcount: body.headcount ?? null,
           description: body.description ?? null,
           status: COMPANY_STATUSES.includes(body.status) ? body.status : null,
+          is_client: !!body.is_client,
           score: 0,
           score_updated_at: now,
           in_pipeline: false,

@@ -7,7 +7,10 @@ const NEW = '__new__';
 
 // Create a company. Vertical can be an existing one or a newly-typed name (the
 // server creates it on the fly). HQ / size / status / description are optional.
-export default function AddLeadModal({ verticals, onClose, onCreated }) {
+// asClient — when true, the company is created already flagged is_client (the
+// sidebar's "+ New Client" flow); otherwise it's a plain company, same as the
+// Companies board's "+ Add Company".
+export default function AddLeadModal({ verticals, onClose, onCreated, asClient = false }) {
   const [form, setForm] = useState({
     company_name: '',
     website: '',
@@ -34,6 +37,7 @@ export default function AddLeadModal({ verticals, onClose, onCreated }) {
         hq_location: form.hq_location.trim() || null,
         headcount: form.headcount.trim() || null,
         description: form.description.trim() || null,
+        is_client: asClient,
       };
       if (form.vertical_id === NEW) {
         if (!newVertical.trim()) {
@@ -54,7 +58,7 @@ export default function AddLeadModal({ verticals, onClose, onCreated }) {
   }
 
   return (
-    <Modal title="Add Company" onClose={onClose}>
+    <Modal title={asClient ? 'Add Client' : 'Add Company'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Company Name">
           <Input value={form.company_name} onChange={set('company_name')} placeholder="Acme Co" autoFocus />
@@ -101,7 +105,7 @@ export default function AddLeadModal({ verticals, onClose, onCreated }) {
         <div className="flex items-center justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Add Company'}
+            {saving ? 'Saving…' : asClient ? 'Add Client' : 'Add Company'}
           </Button>
         </div>
       </form>

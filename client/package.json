@@ -1,9 +1,9 @@
 {
-  "name": "panel-sales-tracker-client",
+  "name": "panel-brand-manager-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "React + Tailwind frontend for the Panel Sales Tracker.",
+  "description": "React + Tailwind frontend for Panel Brand Manager.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
