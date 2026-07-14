@@ -9,9 +9,9 @@ import CompaniesNav from '../components/CompaniesNav.jsx';
 import AddLeadModal from '../components/AddLeadModal.jsx';
 import EnrichAllButton from '../components/EnrichAllButton.jsx';
 
-// Lead Intelligence Board — vertical groups of scored, ranked lead cards. The
-// LeadsProvider and LeadDetailPanel are mounted app-wide (see App.jsx) so leads
-// are searchable globally and a lead can open from any view.
+// Lead Intelligence Board — vertical groups of scored, ranked lead cards.
+// LeadsProvider is mounted app-wide (see App.jsx) so leads are searchable
+// globally; opening one navigates to its full-page company view.
 export default function LeadsView() {
   const { leads, verticals, loading, error, refresh, openLead } = useLeads();
   const [adding, setAdding] = useState(false);

@@ -100,6 +100,54 @@ export function isStaleInStage(deal) {
   return (deal.days_in_stage ?? 0) > STALE_STAGE_DAYS;
 }
 
+// ---------------------------------------------------------------------------
+// Ad Tracker: per-client creator-ad pipeline (see ad_items/ad_item_stage_history).
+// Small, purpose-built stage list — deliberately not the generic lanes/tasks
+// engine tried in the (removed) Activation Surface.
+// ---------------------------------------------------------------------------
+export const AD_STAGES = [
+  { code: 'submitted', label: 'Submitted' },
+  { code: 'sent_to_brand', label: 'Sent to Brand' },
+  { code: 'brand_approved', label: 'Brand Approved' },
+  { code: 'live', label: 'Live', group: 'terminal' },
+  { code: 'rejected', label: 'Rejected', group: 'terminal' },
+];
+export const AD_STAGE_LABELS = Object.fromEntries(AD_STAGES.map((s) => [s.code, s.label]));
+export const AD_FORWARD_PATH = ['submitted', 'sent_to_brand', 'brand_approved', 'live'];
+
+export function nextAdStageCode(code) {
+  const idx = AD_FORWARD_PATH.indexOf(code);
+  if (idx === -1 || idx === AD_FORWARD_PATH.length - 1) return null;
+  return AD_FORWARD_PATH[idx + 1];
+}
+
+export const PLATFORMS = ['TikTok', 'Instagram', 'YouTube', 'Other'];
+
+// SLA clock starts when an item first hits 'brand_approved' (ad_item_summaries
+// .approved_at) and runs for AD_SLA_DAYS. Not applicable once the item is
+// terminal (live/rejected) or hasn't been approved yet.
+export const AD_SLA_DAYS = 14;
+
+// { daysLeft, overdue } computed at render time only — never stored, same
+// convention as isTaskOverdue/daysInStage.
+export function adSlaStatus(item) {
+  if (!item?.approved_at || item.current_stage === 'live' || item.current_stage === 'rejected') {
+    return null;
+  }
+  const due = new Date(item.approved_at).getTime() + AD_SLA_DAYS * 24 * 60 * 60 * 1000;
+  const daysLeft = Math.ceil((due - Date.now()) / (24 * 60 * 60 * 1000));
+  return { daysLeft, overdue: daysLeft < 0 };
+}
+
+// Color bucket for the SLA badge: green with days to spare, yellow inside 3
+// days, red once overdue.
+export function adSlaColor(status) {
+  if (!status) return 'text-text-disabled';
+  if (status.overdue) return 'text-red-400';
+  if (status.daysLeft <= 3) return 'text-yellow-400';
+  return 'text-signal';
+}
+
 // Format an integer dollar amount as currency (no cents).
 export function formatCurrency(amount) {
   if (amount == null) return '—';

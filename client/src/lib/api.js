@@ -21,12 +21,15 @@ import {
   STAKEHOLDER_ROLES,
   DEFAULT_HEALTH_THRESHOLD_DAYS,
   nextStageCode,
+  AD_STAGES,
+  PLATFORMS,
 } from './stages.js';
 import { CATEGORY_ORDER, enrichConfig } from './scoringDefaults.js';
 import { calculateScore } from './leadScoring.js';
 import { buildLeadSummary } from './leadsCompute.js';
 
 const STAGE_CODES = STAGES.map((s) => s.code);
+const AD_STAGE_CODES = AD_STAGES.map((s) => s.code);
 
 // Throw on a Supabase error, else return data.
 function unwrap({ data, error }) {
@@ -80,6 +83,19 @@ async function recordStage(dealId, stage, when = nowIso()) {
   unwrap(
     await supabase.from('stage_history').insert({ deal_id: dealId, stage, entered_at: when }),
   );
+}
+
+// ===== Ad tracker helpers ========================================
+
+async function fetchAdItemSummary(id) {
+  return unwrap(await supabase.from('ad_item_summaries').select('*').eq('id', id).single());
+}
+
+// Creators are shared as a plain link (profile/content URL); add a scheme if
+// missing so it's always a clickable href, not just free text.
+function normalizeCreatorLink(value) {
+  const s = String(value).trim();
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
 }
 
 // ===== Lead scoring helpers ======================================
@@ -1074,7 +1090,8 @@ export const api = {
 
   // Unified company activity feed: every person's touches + the deal's
   // touch_log + calendar meetings, merged and sorted newest-first. Each item is
-  // { kind: 'person'|'deal'|'meeting', date, ... } for the LeadDetailPanel.
+  // { kind: 'person'|'deal'|'meeting', date, ... } for CompanyProfile's
+  // Activity section.
   getCompanyActivity: async (leadId) => {
     const lead = unwrap(
       await supabase.from('leads').select('deal_id').eq('id', leadId).single(),
@@ -1250,6 +1267,100 @@ export const api = {
   },
 
   rescoreAllLeads: async () => ({ rescored: await rescoreAllLeadsInternal() }),
+
+  // ---- Ad tracker (per-client creator-ad pipeline) ----
+  // current_stage is trigger-synced from ad_item_stage_history inserts (see
+  // migration 0030); ad_item_summaries exposes current_stage_entered_at +
+  // approved_at (SLA clock start) so the client never recomputes those from
+  // full history unless editing a past date.
+  listAdItems: async (leadId) => {
+    return unwrap(
+      await supabase
+        .from('ad_item_summaries')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false }),
+    );
+  },
+
+  addAdItem: async (leadId, body = {}) => {
+    if (!body.creator_link || !String(body.creator_link).trim()) {
+      throw new Error('Creator link is required');
+    }
+    const now = nowIso();
+    const id = unwrap(
+      await supabase
+        .from('ad_items')
+        .insert({
+          lead_id: leadId,
+          creator_link: normalizeCreatorLink(body.creator_link),
+          platform: PLATFORMS.includes(body.platform) ? body.platform : null,
+          creator_owner: OWNERS.includes(body.creator_owner) ? body.creator_owner : null,
+          brand_owner: OWNERS.includes(body.brand_owner) ? body.brand_owner : null,
+          notes: body.notes ? String(body.notes).trim() : null,
+          current_stage: 'submitted',
+          created_at: now,
+          updated_at: now,
+        })
+        .select('id')
+        .single(),
+    ).id;
+    unwrap(
+      await supabase
+        .from('ad_item_stage_history')
+        .insert({ ad_item_id: id, stage: 'submitted', entered_at: now }),
+    );
+    return fetchAdItemSummary(id);
+  },
+
+  updateAdItem: async (id, body = {}) => {
+    const patch = { updated_at: nowIso() };
+    if (body.creator_link !== undefined) patch.creator_link = normalizeCreatorLink(body.creator_link);
+    if (body.platform !== undefined)
+      patch.platform = PLATFORMS.includes(body.platform) ? body.platform : null;
+    if (body.creator_owner !== undefined)
+      patch.creator_owner = OWNERS.includes(body.creator_owner) ? body.creator_owner : null;
+    if (body.brand_owner !== undefined)
+      patch.brand_owner = OWNERS.includes(body.brand_owner) ? body.brand_owner : null;
+    if (body.notes !== undefined) patch.notes = body.notes ? String(body.notes).trim() : null;
+    unwrap(await supabase.from('ad_items').update(patch).eq('id', id));
+    return fetchAdItemSummary(id);
+  },
+
+  setAdItemStage: async (id, stage) => {
+    if (!AD_STAGE_CODES.includes(stage)) throw new Error('Invalid ad stage code');
+    unwrap(
+      await supabase.from('ad_item_stage_history').insert({ ad_item_id: id, stage, entered_at: nowIso() }),
+    );
+    return fetchAdItemSummary(id);
+  },
+
+  getAdItemHistory: async (id) => {
+    return unwrap(
+      await supabase
+        .from('ad_item_stage_history')
+        .select('id,stage,entered_at')
+        .eq('ad_item_id', id)
+        .order('id'),
+    );
+  },
+
+  updateAdStageDate: async (id, historyId, entered_at) => {
+    if (!entered_at) throw new Error('entered_at is required');
+    unwrap(
+      await supabase
+        .from('ad_item_stage_history')
+        .update({ entered_at: normalizeDateInput(entered_at) })
+        .eq('id', historyId)
+        .eq('ad_item_id', id),
+    );
+    unwrap(await supabase.from('ad_items').update({ updated_at: nowIso() }).eq('id', id));
+    return fetchAdItemSummary(id);
+  },
+
+  deleteAdItem: async (id) => {
+    unwrap(await supabase.from('ad_items').delete().eq('id', id));
+  },
 };
 
 // Invoke the apollo-enrich Edge Function and normalize its response. Throws a

@@ -7,6 +7,7 @@ import { fmtDate } from '../lib/dates.js';
 import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
 import SignalControl from './SignalControl.jsx';
 import AnimatedNumber from './AnimatedNumber.jsx';
+import AdTrackerSection from './AdTrackerSection.jsx';
 
 const isDateValue = (v) => v && !['Yes', 'No', 'Unknown'].includes(v) && !Number.isNaN(Date.parse(v));
 
@@ -22,13 +23,14 @@ function PointsBadge({ points, maxPoints }) {
   );
 }
 
-// The full company/client profile: firmographics, Apollo enrichment, signals,
-// contacts, activity feed and account actions. Rendered both inside the
-// slide-over (LeadDetailPanel) and as a full page (ClientView).
+// The full company/client profile: two independently-scrolling columns, same
+// pattern as DealView.jsx — firmographics/enrichment/signals/account actions
+// in a wide left column, Contacts/Ad Tracker/Activity pinned in a fixed-width
+// right sidebar. Rendered as the full page at /clients/:id and /leads/:leadId
+// (see CompanyView.jsx) — there is no slide-over anymore.
 //   leadId     — company to load
-//   onClose    — when provided, shows a ✕ in the header (slide-over only)
-//   onDeleted  — called after the company is deleted (close panel / navigate)
-export default function CompanyProfile({ leadId, onClose, onDeleted }) {
+//   onDeleted  — called after the company is deleted (caller navigates away)
+export default function CompanyProfile({ leadId, onDeleted }) {
   const { verticals, config, refresh } = useLeads();
   const navigate = useNavigate();
   const [lead, setLead] = useState(null);
@@ -102,11 +104,12 @@ export default function CompanyProfile({ leadId, onClose, onDeleted }) {
   }
 
   return (
-    <div className="flex flex-col min-h-full">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b border-hairline sticky top-0 bg-space z-10">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+    <div className="flex-1 min-h-0 flex items-start pl-6">
+      {/* Left column — everything except Contacts/Ad Tracker/Activity */}
+      <div className="flex-1 min-w-0 h-full overflow-y-auto py-6 pr-6 border-r border-hairline flex justify-center">
+        <div className="w-full max-w-[720px]">
+          {/* Header */}
+          <div className="px-5 pt-5 pb-4 border-b border-hairline">
             <div className="text-text-primary text-[20px] font-semibold truncate">
               {lead.company_name}
             </div>
@@ -120,172 +123,168 @@ export default function CompanyProfile({ leadId, onClose, onDeleted }) {
                 updated {relativeTime(lead.score_updated_at)}
               </span>
             </div>
+
+            {/* Keyed by enriched_at so Apollo-filled values replace the
+                uncontrolled inputs' DOM value after an enrichment refresh. */}
+            <div key={`hdr-${lead.enriched_at ?? '0'}`} className="grid grid-cols-2 gap-3 mt-4">
+              <Field label="Website">
+                <Input
+                  defaultValue={lead.website ?? ''}
+                  onBlur={(e) => after(() => api.updateLead(lead.id, { website: e.target.value }))}
+                  placeholder="acme.com"
+                />
+              </Field>
+              <Field label="Vertical">
+                <Select
+                  value={lead.vertical_id ?? ''}
+                  onChange={(e) =>
+                    after(() =>
+                      api.updateLead(lead.id, { vertical_id: e.target.value ? Number(e.target.value) : null }),
+                    )
+                  }
+                >
+                  <option value="">Unsorted</option>
+                  {verticals.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="HQ / Location">
+                <Input
+                  defaultValue={lead.hq_location ?? ''}
+                  onBlur={(e) => after(() => api.updateLead(lead.id, { hq_location: e.target.value }))}
+                  placeholder="San Francisco, CA"
+                />
+              </Field>
+              <Field label="Employees / Size">
+                <Input
+                  defaultValue={lead.headcount ?? ''}
+                  onBlur={(e) => after(() => api.updateLead(lead.id, { headcount: e.target.value }))}
+                  placeholder="51-200"
+                />
+              </Field>
+            </div>
+
+            <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
+              <Field label="Description">
+                <TextArea
+                  rows={3}
+                  defaultValue={lead.description ?? ''}
+                  onBlur={(e) => after(() => api.updateLead(lead.id, { description: e.target.value }))}
+                  placeholder="What the company does, context, fit…"
+                />
+              </Field>
+            </div>
           </div>
-          {onClose && (
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary text-[13px]">
-              ✕
-            </button>
-          )}
-        </div>
 
-        {/* Keyed by enriched_at so Apollo-filled values replace the
-            uncontrolled inputs' DOM value after an enrichment refresh. */}
-        <div key={`hdr-${lead.enriched_at ?? '0'}`} className="grid grid-cols-2 gap-3 mt-4">
-          <Field label="Website">
-            <Input
-              defaultValue={lead.website ?? ''}
-              onBlur={(e) => after(() => api.updateLead(lead.id, { website: e.target.value }))}
-              placeholder="acme.com"
-            />
-          </Field>
-          <Field label="Vertical">
-            <Select
-              value={lead.vertical_id ?? ''}
-              onChange={(e) =>
-                after(() =>
-                  api.updateLead(lead.id, { vertical_id: e.target.value ? Number(e.target.value) : null }),
-                )
-              }
+          {/* Enrichment (Apollo) */}
+          <EnrichmentSection lead={lead} busy={busy} after={after} />
+
+          {/* Signals */}
+          <div className="px-5 py-4 border-b border-hairline">
+            <Eyebrow className="mb-3">Signals</Eyebrow>
+            <div className="space-y-5">
+              {config.categories.map((cat) => {
+                const sigs = signalsByCategory.get(cat) ?? [];
+                if (sigs.length === 0) return null;
+                return (
+                  <div key={cat}>
+                    <div className="text-text-muted text-[11px] mb-2">{cat}</div>
+                    <div className="space-y-3">
+                      {sigs.map((cfg) => {
+                        const sig = lead.signals[cfg.signal_key] ?? {};
+                        const showNotes =
+                          (cfg.has_notes || cfg.has_text) &&
+                          (sig.value === 'Yes' || isDateValue(sig.value) || (sig.notes ?? '') !== '');
+                        return (
+                          <div key={cfg.signal_key}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-text-secondary text-[13px]">{cfg.label}</span>
+                              <PointsBadge points={lead.points?.[cfg.signal_key] ?? 0} maxPoints={cfg.max_points} />
+                            </div>
+                            <SignalControl
+                              config={cfg}
+                              value={sig.value}
+                              onChange={(v) => saveSignal(cfg.signal_key, { value: v })}
+                            />
+                            {showNotes && (
+                              <Input
+                                defaultValue={sig.notes ?? ''}
+                                onBlur={(e) => saveSignal(cfg.signal_key, { notes: e.target.value || null })}
+                                placeholder={cfg.has_text ? 'Name' : 'Notes'}
+                                className="mt-1.5"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Footer — client flag, Start Outreach + remove lead */}
+          <div className="px-5 py-4 border-t border-hairline space-y-3">
+            <Button
+              variant={lead.is_client ? 'ghost' : 'secondary'}
+              className="w-full"
+              disabled={busy}
+              onClick={() => after(() => api.updateLead(lead.id, { is_client: !lead.is_client }))}
             >
-              <option value="">Unsorted</option>
-              {verticals.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="HQ / Location">
-            <Input
-              defaultValue={lead.hq_location ?? ''}
-              onBlur={(e) => after(() => api.updateLead(lead.id, { hq_location: e.target.value }))}
-              placeholder="San Francisco, CA"
-            />
-          </Field>
-          <Field label="Employees / Size">
-            <Input
-              defaultValue={lead.headcount ?? ''}
-              onBlur={(e) => after(() => api.updateLead(lead.id, { headcount: e.target.value }))}
-              placeholder="51-200"
-            />
-          </Field>
-        </div>
+              {lead.is_client ? 'Remove from clients' : '★ Mark as client'}
+            </Button>
 
-        <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
-          <Field label="Description">
-            <TextArea
-              rows={3}
-              defaultValue={lead.description ?? ''}
-              onBlur={(e) => after(() => api.updateLead(lead.id, { description: e.target.value }))}
-              placeholder="What the company does, context, fit…"
-            />
-          </Field>
-        </div>
-      </div>
+            {lead.in_pipeline ? (
+              <div className="flex items-center justify-between">
+                <span className="eyebrow text-signal flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-signal inline-block" />
+                  In Pipeline
+                </span>
+                <Button variant="ghost" onClick={() => navigate('/pipeline')}>
+                  View in Pipeline →
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                className="w-full"
+                disabled={busy}
+                onClick={() => after(() => api.startLeadOutreach(lead.id))}
+              >
+                Start Outreach →
+              </Button>
+            )}
 
-      {/* Enrichment (Apollo) */}
-      <EnrichmentSection lead={lead} busy={busy} after={after} />
-
-      {/* Signals */}
-      <div className="px-5 py-4 border-b border-hairline">
-        <Eyebrow className="mb-3">Signals</Eyebrow>
-        <div className="space-y-5">
-          {config.categories.map((cat) => {
-            const sigs = signalsByCategory.get(cat) ?? [];
-            if (sigs.length === 0) return null;
-            return (
-              <div key={cat}>
-                <div className="text-text-muted text-[11px] mb-2">{cat}</div>
-                <div className="space-y-3">
-                  {sigs.map((cfg) => {
-                    const sig = lead.signals[cfg.signal_key] ?? {};
-                    const showNotes =
-                      (cfg.has_notes || cfg.has_text) &&
-                      (sig.value === 'Yes' || isDateValue(sig.value) || (sig.notes ?? '') !== '');
-                    return (
-                      <div key={cfg.signal_key}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-text-secondary text-[13px]">{cfg.label}</span>
-                          <PointsBadge points={lead.points?.[cfg.signal_key] ?? 0} maxPoints={cfg.max_points} />
-                        </div>
-                        <SignalControl
-                          config={cfg}
-                          value={sig.value}
-                          onChange={(v) => saveSignal(cfg.signal_key, { value: v })}
-                        />
-                        {showNotes && (
-                          <Input
-                            defaultValue={sig.notes ?? ''}
-                            onBlur={(e) => saveSignal(cfg.signal_key, { notes: e.target.value || null })}
-                            placeholder={cfg.has_text ? 'Name' : 'Notes'}
-                            className="mt-1.5"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
+            {showDelete ? (
+              <div className="border border-red-500/30 p-3 space-y-2">
+                <div className="text-text-secondary text-[12px]">
+                  Permanently delete <span className="text-text-primary">{lead.company_name}</span>,
+                  its signals and contacts? This cannot be undone.
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
+                  <Button variant="danger" disabled={busy} onClick={deleteLead}>Remove Lead</Button>
                 </div>
               </div>
-            );
-          })}
+            ) : (
+              <button
+                onClick={() => setShowDelete(true)}
+                className="text-text-muted hover:text-red-400 text-[12px] transition-colors"
+              >
+                Remove this lead
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Contacts */}
-      <ContactsSection lead={lead} busy={busy} after={after} />
-
-      {/* Unified activity feed across people + deal + meetings */}
-      <ActivitySection leadId={lead.id} />
-
-      {/* Footer — client flag, Start Outreach + remove lead */}
-      <div className="px-5 py-4 border-t border-hairline mt-auto bg-space space-y-3">
-        <Button
-          variant={lead.is_client ? 'ghost' : 'secondary'}
-          className="w-full"
-          disabled={busy}
-          onClick={() => after(() => api.updateLead(lead.id, { is_client: !lead.is_client }))}
-        >
-          {lead.is_client ? 'Remove from clients' : '★ Mark as client'}
-        </Button>
-
-        {lead.in_pipeline ? (
-          <div className="flex items-center justify-between">
-            <span className="eyebrow text-signal flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-signal inline-block" />
-              In Pipeline
-            </span>
-            <Button variant="ghost" onClick={() => navigate('/pipeline')}>
-              View in Pipeline →
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={busy}
-            onClick={() => after(() => api.startLeadOutreach(lead.id))}
-          >
-            Start Outreach →
-          </Button>
-        )}
-
-        {showDelete ? (
-          <div className="border border-red-500/30 p-3 space-y-2">
-            <div className="text-text-secondary text-[12px]">
-              Permanently delete <span className="text-text-primary">{lead.company_name}</span>,
-              its signals and contacts? This cannot be undone.
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
-              <Button variant="danger" disabled={busy} onClick={deleteLead}>Remove Lead</Button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowDelete(true)}
-            className="text-text-muted hover:text-red-400 text-[12px] transition-colors"
-          >
-            Remove this lead
-          </button>
-        )}
+      {/* Right sidebar — Contacts, Ad Tracker, Activity */}
+      <div className="w-[420px] shrink-0 h-full overflow-y-auto">
+        <ContactsSection lead={lead} busy={busy} after={after} />
+        <AdTrackerSection leadId={lead.id} />
+        <ActivitySection leadId={lead.id} />
       </div>
     </div>
   );

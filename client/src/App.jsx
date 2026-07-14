@@ -6,11 +6,10 @@ import LoginView from './views/LoginView.jsx';
 import { DealsProvider } from './state/DealsContext.jsx';
 import { LeadsProvider } from './state/LeadsContext.jsx';
 import DealDetailPanel from './components/DealDetailPanel.jsx';
-import LeadDetailPanel from './components/LeadDetailPanel.jsx';
 import HomeView from './views/HomeView.jsx';
 import PipelineView from './views/PipelineView.jsx';
 import DealView from './views/DealView.jsx';
-import ClientView from './views/ClientView.jsx';
+import CompanyView from './views/CompanyView.jsx';
 import LeadsView from './views/LeadsView.jsx';
 import PeopleView from './views/PeopleView.jsx';
 import ScoringConfigView from './views/ScoringConfigView.jsx';
@@ -72,9 +71,9 @@ export default function App() {
               <Route path="/pipeline" element={<PipelineView />} />
               <Route path="/pipeline/:dealId" element={<PipelineView />} />
               <Route path="/deals/:dealId" element={<DealView />} />
-              <Route path="/clients/:id" element={<ClientView />} />
+              <Route path="/clients/:id" element={<CompanyView />} />
               <Route path="/leads" element={<LeadsView />} />
-              <Route path="/leads/:leadId" element={<LeadsView />} />
+              <Route path="/leads/:leadId" element={<CompanyView />} />
               <Route path="/people" element={<PeopleView />} />
               <Route path="/people/:personId" element={<PeopleView />} />
               <Route path="/scoring-config" element={<ScoringConfigView />} />
@@ -89,9 +88,8 @@ export default function App() {
             </main>
           </div>
         </div>
-        {/* Global slide-in panels — open whenever a deal/lead is selected. */}
+        {/* Global slide-in panel — open whenever a deal is selected. */}
         <DealDetailPanel />
-        <LeadDetailPanel />
         </InboxProvider>
       </LeadsProvider>
     </DealsProvider>
