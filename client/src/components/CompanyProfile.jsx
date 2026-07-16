@@ -8,6 +8,7 @@ import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
 import SignalControl from './SignalControl.jsx';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
+import SpendGoalsSection from './SpendGoalsSection.jsx';
 
 const isDateValue = (v) => v && !['Yes', 'No', 'Unknown'].includes(v) && !Number.isNaN(Date.parse(v));
 
@@ -163,6 +164,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
                   placeholder="51-200"
                 />
               </Field>
+              <EverflowAdvertiserIdField lead={lead} busy={busy} after={after} />
             </div>
 
             <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
@@ -179,6 +181,9 @@ export default function CompanyProfile({ leadId, onDeleted }) {
 
           {/* Enrichment (Apollo) */}
           <EnrichmentSection lead={lead} busy={busy} after={after} />
+
+          {/* Spend & Goals (Everflow) */}
+          <SpendGoalsSection lead={lead} />
 
           {/* Signals */}
           <div className="px-5 py-4 border-b border-hairline">
@@ -287,6 +292,65 @@ export default function CompanyProfile({ leadId, onDeleted }) {
         <ActivitySection leadId={lead.id} />
       </div>
     </div>
+  );
+}
+
+// Everflow Advertiser ID — same inline-edit convention as the other header
+// fields (uncontrolled Input, save on blur), except changing or clearing an
+// ID that's already set requires an explicit confirm first: this field
+// silently controls which advertiser Spend & Goals syncs against, so a
+// fat-fingered edit would quietly start pulling the wrong client's revenue.
+// First-time entry (field currently empty) still saves immediately — nothing
+// to protect yet. Confirm styling mirrors the "Remove this lead" pattern
+// below in this same file.
+function EverflowAdvertiserIdField({ lead, busy, after }) {
+  const [pending, setPending] = useState(null);
+  const [resetKey, setResetKey] = useState(0);
+  const current = lead.everflow_advertiser_id ?? '';
+
+  function handleBlur(e) {
+    const next = e.target.value.trim();
+    if (next === current) return;
+    if (!current) {
+      after(() => api.updateLead(lead.id, { everflow_advertiser_id: next || null }));
+      return;
+    }
+    setPending(next);
+  }
+
+  function confirm() {
+    after(() => api.updateLead(lead.id, { everflow_advertiser_id: pending || null })).then(() =>
+      setPending(null),
+    );
+  }
+
+  function cancel() {
+    setPending(null);
+    setResetKey((k) => k + 1);
+  }
+
+  return (
+    <Field label="Everflow Advertiser ID">
+      <Input key={`efid-${current}-${resetKey}`} defaultValue={current} onBlur={handleBlur} placeholder="e.g. 1234" />
+      {pending !== null && (
+        <div className="mt-1.5 border border-red-500/30 p-2 space-y-1.5">
+          <div className="text-text-secondary text-[11px]">
+            {pending ? (
+              <>
+                Change Advertiser ID from <span className="text-text-primary">{current}</span> to{' '}
+                <span className="text-text-primary">{pending}</span>? This affects Spend &amp; Goals syncing.
+              </>
+            ) : (
+              <>Clear the Advertiser ID? Spend syncing for this client will stop until it's set again.</>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={cancel}>Cancel</Button>
+            <Button variant="danger" disabled={busy} onClick={confirm}>Confirm</Button>
+          </div>
+        </div>
+      )}
+    </Field>
   );
 }
 

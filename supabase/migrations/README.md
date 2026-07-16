@@ -40,6 +40,7 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0029 | `0029_drop_related_deals.sql` | Drop `deal_relations` (Related Deals feature removed before shipping) |
 | 0030 | `0030_ad_tracker.sql` | `ad_items` + `ad_item_stage_history` tables, stage-sync trigger, `ad_item_summaries` view |
 | 0031 | `0031_ad_items_creator_link.sql` | Replace `ad_items.creator_name`/`creator_handle` with a single `creator_link` column |
+| 0032 | `0032_client_spend_goals.sql` | `leads.everflow_advertiser_id`, `client_spend_goals` + `client_spend_actuals` tables |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number

@@ -829,6 +829,7 @@ export const api = {
       technologies: lead.technologies ?? null,
       enriched_at: lead.enriched_at ?? null,
       enriched_source: lead.enriched_source ?? null,
+      everflow_advertiser_id: lead.everflow_advertiser_id ?? null,
       signals: signalMap,
       contacts,
       points: breakdown,
@@ -887,6 +888,11 @@ export const api = {
     if (body.founded_year !== undefined) {
       const y = Number(body.founded_year);
       patch.founded_year = Number.isFinite(y) && y > 0 ? Math.round(y) : null;
+    }
+    if (body.everflow_advertiser_id !== undefined) {
+      patch.everflow_advertiser_id = body.everflow_advertiser_id
+        ? String(body.everflow_advertiser_id).trim()
+        : null;
     }
     unwrap(await supabase.from('leads').update(patch).eq('id', id));
     return leadSummaryById(id);
@@ -1362,6 +1368,56 @@ export const api = {
   deleteAdItem: async (id) => {
     unwrap(await supabase.from('ad_items').delete().eq('id', id));
   },
+
+  // ---- Spend & Goals (Everflow) ----
+  listSpendGoals: async (leadId) => {
+    return unwrap(
+      await supabase
+        .from('client_spend_goals')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('month', { ascending: false }),
+    );
+  },
+
+  // One row per (lead, month) — upsert on the unique constraint.
+  upsertSpendGoal: async (leadId, month, goalAmount) => {
+    const n = Number(goalAmount);
+    unwrap(
+      await supabase.from('client_spend_goals').upsert(
+        {
+          lead_id: leadId,
+          month,
+          goal_amount: Number.isFinite(n) ? Math.round(n) : 0,
+          updated_at: nowIso(),
+        },
+        { onConflict: 'lead_id,month' },
+      ),
+    );
+    return api.listSpendGoals(leadId);
+  },
+
+  listSpendActuals: async (leadId) => {
+    return unwrap(
+      await supabase
+        .from('client_spend_actuals')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('month', { ascending: false }),
+    );
+  },
+
+  // Sync one month (default: current) from Everflow via the everflow-sync
+  // Edge Function, which holds the API key server-side — mirrors enrichLead.
+  syncSpendActuals: async (leadId, { month, force = false } = {}) => {
+    const data = await invokeEverflowSync({ leadId, month, force });
+    if (!data.matched) {
+      const e = new Error(data.reason || 'No Everflow data returned.');
+      e.code = 'no_match';
+      throw e;
+    }
+    return api.listSpendActuals(leadId);
+  },
 };
 
 // Invoke the apollo-enrich Edge Function and normalize its response. Throws a
@@ -1383,6 +1439,24 @@ async function invokeEnrich(body) {
     };
     const e = new Error(data?.message || map[data?.error] || 'Enrichment failed.');
     e.code = data?.error || 'enrich_failed';
+    throw e;
+  }
+  return data;
+}
+
+// Invoke the everflow-sync Edge Function and normalize its response, same
+// shape as invokeEnrich.
+async function invokeEverflowSync(body) {
+  const { data, error } = await supabase.functions.invoke('everflow-sync', { body });
+  if (error) {
+    const e = new Error(data?.message || 'Everflow sync service unavailable.');
+    e.code = data?.error || 'transport';
+    throw e;
+  }
+  if (!data?.ok) {
+    const map = { rate_limited: 'Everflow rate limit reached — try again shortly.' };
+    const e = new Error(data?.message || map[data?.error] || 'Everflow sync failed.');
+    e.code = data?.error || 'sync_failed';
     throw e;
   }
   return data;
