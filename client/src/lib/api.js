@@ -778,10 +778,21 @@ export const api = {
   },
 
   // ---- Leads ----
+  // Column list is exactly what buildLeadSummary consumes (see leadsCompute.js)
+  // — deliberately excludes apollo_raw/technologies/description, the large
+  // per-lead jsonb/text blobs only the single-record getLead() below needs.
+  // This list is refetched on every board/profile mutation, so those blobs
+  // being included here meant re-downloading every lead's enrichment payload
+  // on every click.
   listLeads: async () => {
     const configs = await loadConfigs();
     const leads = unwrap(
-      await supabase.from('leads').select('*, vertical:verticals(name)').order('score', { ascending: false }),
+      await supabase
+        .from('leads')
+        .select(
+          'id, company_name, website, vertical_id, score, score_updated_at, in_pipeline, is_client, deal_id, created_at, updated_at, vertical:verticals(name)',
+        )
+        .order('score', { ascending: false }),
     );
     const allSignals = unwrap(await supabase.from('lead_signals').select('lead_id,signal_key,value,notes'));
     const allContacts = unwrap(await supabase.from('lead_contacts').select('lead_id'));
@@ -1018,12 +1029,15 @@ export const api = {
   // ---- People ----
   // Flat list of every contact across all companies, enriched with the parent
   // company name + vertical and outreach rollups (last_touch_at, touch_count).
-  // Powers the People roster.
+  // Powers the People roster. Column list is exactly what PeopleView.jsx's
+  // roster rendering + search filter and ContactSelect.jsx consume —
+  // deliberately excludes apollo_raw (the large per-contact jsonb blob only
+  // the single-record getContact() below needs), same reasoning as listLeads.
   listContacts: async () => {
     const rows = unwrap(
       await supabase
         .from('lead_contacts')
-        .select('*, lead:leads(id, company_name, vertical_id)')
+        .select('id, lead_id, name, title, email, location, seniority, linkedin, lead:leads(id, company_name, vertical_id)')
         .order('id', { ascending: false }),
     );
     const touches = unwrap(await supabase.from('contact_touches').select('contact_id,touch_date'));
@@ -1397,22 +1411,28 @@ export const api = {
     return api.listSpendGoals(leadId);
   },
 
+  // Excludes everflow_raw (the raw per-month Everflow reporting row, never
+  // read by SpendGoalsSection.jsx) — only listed here, not in the sync
+  // upsert, so the raw payload stays available for debugging via SQL.
   listSpendActuals: async (leadId) => {
     return unwrap(
       await supabase
         .from('client_spend_actuals')
-        .select('*')
+        .select('id, lead_id, month, revenue, payout, synced_at')
         .eq('lead_id', leadId)
         .order('month', { ascending: false }),
     );
   },
 
-  // Sync one month (default: current) from Everflow via the everflow-sync
-  // Edge Function, which holds the API key server-side — mirrors enrichLead.
-  syncSpendActuals: async (leadId, { month, force = false } = {}) => {
-    const data = await invokeEverflowSync({ leadId, month, force });
-    if (!data.matched) {
-      const e = new Error(data.reason || 'No Everflow data returned.');
+  // Full-history sync from Everflow via the everflow-sync Edge Function,
+  // which holds the API key server-side — mirrors enrichLead. Walks backward
+  // from the current month server-side (see the Edge Function's header
+  // comment), so this covers the client's whole Everflow history, not just
+  // the current month.
+  syncSpendActuals: async (leadId) => {
+    const data = await invokeEverflowSync({ leadId });
+    if (data.synced === 0) {
+      const e = new Error(data.reason || 'No Everflow data found for this advertiser.');
       e.code = 'no_match';
       throw e;
     }

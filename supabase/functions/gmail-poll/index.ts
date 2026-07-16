@@ -160,7 +160,8 @@ async function pollConnection(
   const sugRows = await db
     .from("email_suggestions")
     .select("contact_email")
-    .eq("user_id", conn.user_id);
+    .eq("user_id", conn.user_id)
+    .limit(500);
   const suggestedContacts = new Set(
     (sugRows.data ?? []).map((r) => (r.contact_email ?? "").toLowerCase()).filter(Boolean),
   );

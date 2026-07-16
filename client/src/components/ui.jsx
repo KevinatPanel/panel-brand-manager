@@ -72,6 +72,8 @@ const ICON_PATHS = {
   trash: 'M104,48L152,48L152,72L104,72Z M64,72L192,72L192,88L64,88Z M76,96L180,96L170,208L86,208Z',
   // Rectangular ring — attachment/paperclip.
   paperclip: 'M88,40L168,40L168,180L88,180Z M104,164L152,164L152,56L104,56Z',
+  // Circular arrow — refresh/sync.
+  sync: 'M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1-5.66-13.66l17.94-17.94A80,80,0,1,0,214.86,158.5a8,8,0,1,1,15,5.6A96,96,0,1,1,208,72.69L225.66,55A8,8,0,0,1,240,56Z',
 };
 
 export function Icon({ name, className = 'w-4 h-4' }) {
@@ -89,7 +91,7 @@ export function IconButton({ icon, active = false, className = '', ...props }) {
     <button
       type="button"
       {...props}
-      className={`inline-flex items-center justify-center h-7 w-7 shrink-0 border transition-colors ${
+      className={`inline-flex items-center justify-center h-7 w-7 shrink-0 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         active
           ? 'border-signal/50 text-signal'
           : 'border-hairline text-text-muted hover:text-text-primary hover:bg-card-hover'

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { formatCurrency } from '../lib/stages.js';
 import { relativeTime } from '../lib/leads.js';
-import { Eyebrow, Input, Button } from './ui.jsx';
+import { Eyebrow, Input, IconButton } from './ui.jsx';
 
 const HISTORY_MONTHS = 12;
 
@@ -63,6 +63,11 @@ export default function SpendGoalsSection({ lead }) {
   const actualByMonth = new Map(actuals.map((a) => [a.month, a]));
   const months = Array.from({ length: HISTORY_MONTHS }, (_, i) => monthKey(-i));
   const [currentMonth, ...historyMonths] = months;
+  // Remaining calendar months this year, so goals can be set ahead of time
+  // (e.g. planning Q4 in July) — not just for the current/past months.
+  const monthsLeftInYear = 11 - new Date().getMonth();
+  const futureMonths = Array.from({ length: monthsLeftInYear }, (_, i) => monthKey(i + 1));
+  const otherMonths = [...futureMonths, ...historyMonths];
 
   const mostRecentSync = actuals.reduce(
     (max, a) => (a.synced_at && (!max || a.synced_at > max) ? a.synced_at : max),
@@ -78,14 +83,13 @@ export default function SpendGoalsSection({ lead }) {
           {mostRecentSync && (
             <span className="text-text-disabled text-[11px]">synced {relativeTime(mostRecentSync)}</span>
           )}
-          <Button
-            variant="ghost"
+          <IconButton
+            icon="sync"
             disabled={busy || !canSync}
-            title={canSync ? 'Pull latest revenue from Everflow' : 'Add an Everflow Advertiser ID first'}
-            onClick={() => after(() => api.syncSpendActuals(lead.id, { month: currentMonth }))}
-          >
-            ↻ Sync from Everflow
-          </Button>
+            title={canSync ? 'Pull all historical revenue from Everflow' : 'Add an Everflow Advertiser ID first'}
+            aria-label="Sync from Everflow"
+            onClick={() => after(() => api.syncSpendActuals(lead.id))}
+          />
         </div>
       </div>
 
@@ -104,9 +108,9 @@ export default function SpendGoalsSection({ lead }) {
         prominent
       />
 
-      {historyMonths.length > 0 && (
+      {otherMonths.length > 0 && (
         <div className="mt-2 max-h-[320px] overflow-y-auto">
-          {historyMonths.map((month) => (
+          {otherMonths.map((month) => (
             <MonthRow
               key={month}
               month={month}
@@ -146,14 +150,7 @@ function MonthRow({ month, goal, actual, busy, onSetGoal, prominent }) {
       </div>
       <div className="flex items-center gap-2 mt-1">
         <span className="text-text-muted text-[11px] shrink-0">Goal</span>
-        <Input
-          type="number"
-          defaultValue={goalAmount ?? ''}
-          onBlur={(e) => e.target.value !== '' && onSetGoal(e.target.value)}
-          placeholder="0"
-          disabled={busy}
-          className="w-28 font-mono py-1"
-        />
+        <GoalInput goalAmount={goalAmount} busy={busy} onSetGoal={onSetGoal} />
       </div>
       {goalAmount ? (
         <div className="h-[3px] bg-hairline mt-1.5">
@@ -164,5 +161,35 @@ function MonthRow({ month, goal, actual, busy, onSetGoal, prominent }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// Goal amount, shown formatted as currency ($8,000) once set. Switches to a
+// plain digit-entry field on focus so typing isn't fighting formatting, then
+// reformats + commits on blur.
+function GoalInput({ goalAmount, busy, onSetGoal }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const displayValue = editing ? draft : goalAmount != null ? formatCurrency(goalAmount) : '';
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      onFocus={() => {
+        setDraft(goalAmount != null ? String(goalAmount) : '');
+        setEditing(true);
+      }}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== '') onSetGoal(draft);
+      }}
+      placeholder="$0"
+      disabled={busy}
+      className="w-28 font-mono py-1"
+    />
   );
 }

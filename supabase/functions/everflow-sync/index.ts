@@ -1,17 +1,27 @@
 // everflow-sync: two entry paths, distinguished by auth.
 //   - Manual (the rep's JWT, via functions.invoke from the "Sync" button):
-//     { leadId, month?, force? } — syncs one client's one month (default: the
-//     current month).
+//     { leadId, month?, force? }
+//       - month omitted (the normal case — the "Sync from Everflow" button):
+//         walks backward from the current month, syncing every month found,
+//         until 3 consecutive months come back with no Everflow data (or a
+//         60-month/5-year hard cap is hit). This is a full history backfill,
+//         not just the current month.
+//       - month given: syncs that single month only (used internally by the
+//         scheduled batch below; not currently exposed in the UI).
 //   - Scheduled batch (service role only, via pg_cron — see
 //     docs/everflow-integration-setup.md): {} — loops every client with an
 //     everflow_advertiser_id set, syncing the current + previous month (the
 //     previous month catches late conversion corrections after month-close).
+//     Deliberately NOT widened to full history — that stays a manual,
+//     on-demand action so the daily cron doesn't hammer Everflow for every
+//     client every day.
 //
 // Response contract (so the client stays simple): handled outcomes return
-// HTTP 200 with { ok, matched, ... }; only auth/bad-input/unexpected use
-// non-2xx.
-//   - matched:    { ok:true, matched:true, revenue, payout, synced_at }
-//   - no match:   { ok:true, matched:false, reason }
+// HTTP 200 with { ok, ... }; only auth/bad-input/unexpected use non-2xx.
+//   - single month, matched:    { ok:true, matched:true, revenue, payout, synced_at }
+//   - single month, no match:   { ok:true, matched:false, reason }
+//   - history walk-back:        { ok:true, historySync:true, synced: N, checked: N,
+//                                  stopped: 'no_data'|'cap'|'rate_limited' }
 //   - batch:      { ok:true, synced: N, skipped: N }
 //   - everflow err: { ok:false, error:'rate_limited'|'unauthorized'|'everflow_error', message }
 import { serviceClient, userFromRequest } from "../_shared/supabase.ts";
@@ -73,6 +83,13 @@ function previousMonth(month: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Walk-back bounds for the manual "Sync from Everflow" full-history path —
+// see the header comment. 3 empty months in a row is treated as "we've
+// walked past when this advertiser started tracking"; 60 months (5 years) is
+// a hard safety cap regardless of what the streak looks like.
+const HISTORY_EMPTY_STREAK_STOP = 3;
+const HISTORY_MAX_MONTHS = 60;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -96,7 +113,10 @@ Deno.serve(async (req) => {
   if (!user) return json({ ok: false, error: "unauthorized" }, 401);
 
   try {
-    return await syncOne(db, payload.leadId, monthRange(payload.month).start);
+    if (payload.month) {
+      return await syncOneResponse(db, payload.leadId, monthRange(payload.month).start);
+    }
+    return await syncHistory(db, payload.leadId);
   } catch (e) {
     if (e instanceof EverflowError) {
       const error = e.code === "rate_limited" ? "rate_limited" : e.code;
@@ -106,22 +126,22 @@ Deno.serve(async (req) => {
   }
 });
 
-async function syncOne(db: SupabaseClient, leadId: number, month: string): Promise<Response> {
-  const { data: lead, error } = await db
-    .from("leads")
-    .select("id, everflow_advertiser_id")
-    .eq("id", leadId)
-    .single();
-  if (error || !lead) return json({ ok: false, error: "not_found", message: "Lead not found." }, 404);
+type MonthSyncResult =
+  | { matched: true; revenue: number | null; payout: number | null; synced_at: string }
+  | { matched: false; reason: string };
 
-  if (!lead.everflow_advertiser_id) {
-    return json({ ok: true, matched: false, reason: "Add an Everflow Advertiser ID first." });
-  }
-
+// Fetches + upserts one advertiser's one month. No HTTP concerns — reused by
+// both the single-month response path and the history walk-back loop.
+async function syncMonth(
+  db: SupabaseClient,
+  leadId: number,
+  advertiserId: string,
+  month: string,
+): Promise<MonthSyncResult> {
   const { start, end } = monthRange(month);
-  const result = await fetchAdvertiserRevenue(lead.everflow_advertiser_id, start, end);
+  const result = await fetchAdvertiserRevenue(advertiserId, start, end);
   if (!result) {
-    return json({ ok: true, matched: false, reason: "No Everflow data for this advertiser in this month." });
+    return { matched: false, reason: "No Everflow data for this advertiser in this month." };
   }
 
   const now = new Date().toISOString();
@@ -136,9 +156,91 @@ async function syncOne(db: SupabaseClient, leadId: number, month: string): Promi
     },
     { onConflict: "lead_id,month" },
   );
-  if (upErr) return json({ ok: false, error: "sync_failed", message: upErr.message }, 500);
+  if (upErr) throw new Error(upErr.message);
 
-  return json({ ok: true, matched: true, revenue: result.revenue, payout: result.payout, synced_at: now });
+  return { matched: true, revenue: result.revenue, payout: result.payout, synced_at: now };
+}
+
+async function lookupAdvertiser(
+  db: SupabaseClient,
+  leadId: number,
+): Promise<{ ok: true; advertiserId: string } | { ok: false; response: Response }> {
+  const { data: lead, error } = await db
+    .from("leads")
+    .select("id, everflow_advertiser_id")
+    .eq("id", leadId)
+    .single();
+  if (error || !lead) {
+    return { ok: false, response: json({ ok: false, error: "not_found", message: "Lead not found." }, 404) };
+  }
+  if (!lead.everflow_advertiser_id) {
+    return {
+      ok: false,
+      response: json({ ok: true, matched: false, reason: "Add an Everflow Advertiser ID first." }),
+    };
+  }
+  return { ok: true, advertiserId: lead.everflow_advertiser_id };
+}
+
+async function syncOneResponse(db: SupabaseClient, leadId: number, month: string): Promise<Response> {
+  const lookup = await lookupAdvertiser(db, leadId);
+  if (!lookup.ok) return lookup.response;
+
+  const result = await syncMonth(db, leadId, lookup.advertiserId, month);
+  if (!result.matched) return json({ ok: true, matched: false, reason: result.reason });
+  return json({
+    ok: true,
+    matched: true,
+    revenue: result.revenue,
+    payout: result.payout,
+    synced_at: result.synced_at,
+  });
+}
+
+// Manual "Sync from Everflow" default path: walk backward from the current
+// month, syncing every month found, until HISTORY_EMPTY_STREAK_STOP
+// consecutive months come back empty (we've likely walked past when this
+// advertiser started) or HISTORY_MAX_MONTHS is hit (hard safety cap). A
+// rate-limit from Everflow stops the walk early rather than failing the
+// whole request — whatever synced so far is already committed.
+async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response> {
+  const lookup = await lookupAdvertiser(db, leadId);
+  if (!lookup.ok) return lookup.response;
+
+  let month = monthRange().start;
+  let synced = 0;
+  let checked = 0;
+  let emptyStreak = 0;
+  let stopped: "no_data" | "cap" | "rate_limited" = "cap";
+
+  for (; checked < HISTORY_MAX_MONTHS; checked++) {
+    let result: MonthSyncResult;
+    try {
+      result = await syncMonth(db, leadId, lookup.advertiserId, month);
+    } catch (e) {
+      if (e instanceof EverflowError && e.code === "rate_limited") {
+        stopped = "rate_limited";
+        break;
+      }
+      throw e;
+    }
+
+    if (result.matched) {
+      synced++;
+      emptyStreak = 0;
+    } else {
+      emptyStreak++;
+      if (emptyStreak >= HISTORY_EMPTY_STREAK_STOP) {
+        stopped = "no_data";
+        checked++;
+        break;
+      }
+    }
+
+    month = previousMonth(month);
+  }
+
+  return json({ ok: true, historySync: true, synced, checked, stopped });
 }
 
 async function syncAll(db: SupabaseClient): Promise<Response> {
@@ -156,7 +258,7 @@ async function syncAll(db: SupabaseClient): Promise<Response> {
   for (const lead of leads ?? []) {
     for (const month of [currentMonth, prevMonth]) {
       try {
-        const res = await syncOne(db, lead.id, month);
+        const res = await syncOneResponse(db, lead.id, month);
         const body = await res.clone().json();
         if (body.matched) synced++;
         else skipped++;
