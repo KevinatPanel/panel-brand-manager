@@ -8,7 +8,7 @@ import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
 import SignalControl from './SignalControl.jsx';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
-import SpendGoalsSection from './SpendGoalsSection.jsx';
+import SpendGoalWidget from './SpendGoalWidget.jsx';
 
 const isDateValue = (v) => v && !['Yes', 'No', 'Unknown'].includes(v) && !Number.isNaN(Date.parse(v));
 
@@ -182,9 +182,6 @@ export default function CompanyProfile({ leadId, onDeleted }) {
           {/* Enrichment (Apollo) */}
           <EnrichmentSection lead={lead} busy={busy} after={after} />
 
-          {/* Spend & Goals (Everflow) */}
-          <SpendGoalsSection lead={lead} />
-
           {/* Signals */}
           <div className="px-5 py-4 border-b border-hairline">
             <Eyebrow className="mb-3">Signals</Eyebrow>
@@ -285,8 +282,9 @@ export default function CompanyProfile({ leadId, onDeleted }) {
         </div>
       </div>
 
-      {/* Right sidebar — Contacts, Ad Tracker, Activity */}
+      {/* Right sidebar — Spend vs. Goal, Contacts, Ad Tracker, Activity */}
       <div className="w-[420px] shrink-0 h-full overflow-y-auto">
+        <SpendGoalWidget lead={lead} />
         <ContactsSection lead={lead} busy={busy} after={after} />
         <AdTrackerSection leadId={lead.id} />
         <ActivitySection leadId={lead.id} />
@@ -533,7 +531,7 @@ function ContactsSection({ lead, busy, after }) {
   }
 
   return (
-    <div className="px-5 py-4">
+    <div className="px-5 py-4 border-t border-hairline">
       <div className="flex items-center justify-between mb-3">
         <Eyebrow>Contacts</Eyebrow>
         <Button variant="ghost" onClick={() => setAdding((a) => !a)}>+ Add Contact</Button>

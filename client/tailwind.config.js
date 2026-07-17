@@ -19,6 +19,7 @@ export default {
         space: '#0A0C12', // Space Black background
         card: 'rgba(255,255,255,0.025)', // Card surface
         'card-hover': 'rgba(255,255,255,0.05)', // Card hover
+        'card-inset': 'rgba(255,255,255,0.015)', // Nested/inset panel (e.g. progress tracks)
         hairline: 'rgba(255,255,255,0.08)', // Dividers/borders
         // Signal Green — active states, status dots, CTAs ONLY
         signal: '#37FA77',

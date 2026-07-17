@@ -1412,7 +1412,7 @@ export const api = {
   },
 
   // Excludes everflow_raw (the raw per-month Everflow reporting row, never
-  // read by SpendGoalsSection.jsx) — only listed here, not in the sync
+  // read by SpendGoalWidget.jsx) — only listed here, not in the sync
   // upsert, so the raw payload stays available for debugging via SQL.
   listSpendActuals: async (leadId) => {
     return unwrap(
