@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import ViewHeader from '../components/ViewHeader.jsx';
-import { Eyebrow, Button, Input, Select, CopyButton, IconButton } from '../components/ui.jsx';
+import { Eyebrow, Button, Input, CopyButton, IconButton } from '../components/ui.jsx';
+import SearchSelect from '../components/SearchSelect.jsx';
 import { gmail } from '../lib/gmail.js';
 import { STAGE_LABELS } from '../lib/stages.js';
 import { useDeals } from '../state/DealsContext.jsx';
@@ -92,17 +93,14 @@ function SuggestionCard({ sug, deals, onResolve, onOpenThread }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Select
-            defaultValue=""
+          <SearchSelect
+            value=""
             disabled={busy}
-            onChange={(e) => attach(e.target.value)}
+            onChange={(id) => attach(id)}
+            options={deals.map((d) => ({ value: d.id, label: d.brand_name }))}
+            placeholder="Attach to existing deal…"
             className="flex-1"
-          >
-            <option value="">Attach to existing deal…</option>
-            {deals.map((d) => (
-              <option key={d.id} value={d.id}>{d.brand_name}</option>
-            ))}
-          </Select>
+          />
           <Button variant="ghost" disabled={busy} onClick={() => run(() => gmail.dismissSuggestion(sug.id))}>
             Ignore
           </Button>

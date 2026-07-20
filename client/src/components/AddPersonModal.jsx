@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Modal } from './Overlay.jsx';
-import { Field, Input, TextArea, Select, Button } from './ui.jsx';
+import { Field, Input, TextArea, Button } from './ui.jsx';
+import SearchSelect from './SearchSelect.jsx';
 
 const NEW = '__new__';
 
@@ -77,13 +78,13 @@ export default function AddPersonModal({ onClose, onCreated, defaultLeadId = '' 
     <Modal title="Add Person" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Company">
-          <Select value={form.lead_id} onChange={set('lead_id')}>
-            <option value="">Select a company…</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.company_name}</option>
-            ))}
-            <option value={NEW}>+ New company…</option>
-          </Select>
+          <SearchSelect
+            value={form.lead_id}
+            onChange={(v) => setForm((f) => ({ ...f, lead_id: v }))}
+            options={companies.map((c) => ({ value: c.id, label: c.company_name }))}
+            pinnedOptions={[{ value: NEW, label: '+ New company…' }]}
+            placeholder="Select a company…"
+          />
         </Field>
 
         {form.lead_id === NEW && (

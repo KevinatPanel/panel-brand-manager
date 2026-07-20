@@ -19,7 +19,7 @@ export function Field({ label, children }) {
   );
 }
 
-const inputBase =
+export const inputBase =
   'w-full bg-space border border-hairline px-3 py-2 text-[13px] text-text-primary ' +
   'placeholder:text-text-disabled outline-none focus:border-signal/60 transition-colors';
 
