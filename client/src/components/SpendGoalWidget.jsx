@@ -127,6 +127,8 @@ function MonthGoalRow({ label, isCurrent, goalAmount, actualAmount, revealed, de
   const hasActual = actualAmount != null;
   const pct = hasActual && goalAmount ? Math.round((actualAmount / goalAmount) * 100) : null;
   const fillPct = pct != null ? Math.min(100, Math.max(0, pct)) : 0;
+  const shownFillPct = revealed ? fillPct : 0;
+  const valueLabel = hasActual ? `${formatCurrency(actualAmount)}${pct != null ? ` (${pct}%)` : ''}` : null;
 
   return (
     <div className="flex items-center gap-3">
@@ -139,18 +141,29 @@ function MonthGoalRow({ label, isCurrent, goalAmount, actualAmount, revealed, de
             className={`absolute inset-y-0 left-0 transition-[width] duration-700 ease-out ${
               isCurrent ? 'bg-signal' : 'bg-[rgba(255,255,255,0.35)]'
             }`}
-            style={{ width: revealed ? `${fillPct}%` : '0%', transitionDelay: `${delayMs}ms` }}
+            style={{ width: `${shownFillPct}%`, transitionDelay: `${delayMs}ms` }}
           />
         )}
         <div className="relative h-full flex items-center px-2.5">
           {hasActual ? (
-            <span className="font-mono font-medium text-text-primary text-[13px]">
-              {formatCurrency(actualAmount)}{pct != null ? ` (${pct}%)` : ''}
-            </span>
+            <span className="font-mono font-medium text-text-primary text-[13px]">{valueLabel}</span>
           ) : (
             <span className="text-text-disabled text-[12px]">Not started</span>
           )}
         </div>
+        {/* Signal Green fails contrast under white text (~1.4:1) — a dark
+            duplicate of the label, clipped to exactly the fill's width,
+            swaps the color only where it sits over the green. The
+            translucent-white fill used for non-current months doesn't need
+            this; white already reads fine there. */}
+        {hasActual && isCurrent && (
+          <div
+            className="absolute inset-0 flex items-center px-2.5 pointer-events-none transition-[clip-path] duration-700 ease-out"
+            style={{ clipPath: `inset(0 ${100 - shownFillPct}% 0 0)`, transitionDelay: `${delayMs}ms` }}
+          >
+            <span className="font-mono font-medium text-space text-[13px] whitespace-nowrap">{valueLabel}</span>
+          </div>
+        )}
       </div>
       <span className="font-mono font-medium text-text-secondary text-[13px] shrink-0 text-right">
         {goalAmount != null ? formatCurrency(goalAmount) : '—'}

@@ -1438,6 +1438,31 @@ export const api = {
     }
     return api.listSpendActuals(leadId);
   },
+
+  // Bulk, single-month reads across many clients at once — the Home page
+  // rollup widget's aggregate, as opposed to the per-client history above.
+  // Scoped to one month + an explicit lead_id list to keep egress small.
+  listSpendGoalsForMonth: async (leadIds, month) => {
+    if (leadIds.length === 0) return [];
+    return unwrap(
+      await supabase
+        .from('client_spend_goals')
+        .select('lead_id, goal_amount')
+        .eq('month', month)
+        .in('lead_id', leadIds),
+    );
+  },
+
+  listSpendActualsForMonth: async (leadIds, month) => {
+    if (leadIds.length === 0) return [];
+    return unwrap(
+      await supabase
+        .from('client_spend_actuals')
+        .select('lead_id, revenue')
+        .eq('month', month)
+        .in('lead_id', leadIds),
+    );
+  },
 };
 
 // Invoke the apollo-enrich Edge Function and normalize its response. Throws a
