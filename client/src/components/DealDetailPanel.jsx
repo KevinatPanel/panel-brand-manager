@@ -80,6 +80,7 @@ export default function DealDetailPanel() {
       await refresh();
     } catch (e) {
       alert(e.message);
+    } finally {
       setBusy(false);
     }
   }

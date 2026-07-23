@@ -87,6 +87,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
       await refresh();
     } catch (e) {
       alert(e.message);
+    } finally {
       setBusy(false);
     }
   }
@@ -106,6 +107,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
       await refresh();
     } catch (e) {
       setMergeError(e.message);
+    } finally {
       setBusy(false);
     }
   }

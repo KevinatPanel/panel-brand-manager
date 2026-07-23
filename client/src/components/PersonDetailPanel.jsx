@@ -61,6 +61,7 @@ export default function PersonDetailPanel() {
       await refresh();
     } catch (e) {
       alert(e.message);
+    } finally {
       setBusy(false);
     }
   }
