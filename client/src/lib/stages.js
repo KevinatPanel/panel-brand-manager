@@ -38,6 +38,10 @@ export const STAGE_LABELS = {
 export const SALES_STAGES = ['S1', 'S2', 'S3', 'S4'];
 export const PROSPECTING_STAGES = ['P1', 'P2'];
 
+// The sales cycle split across two pages: active outreach (S1-S3, Kanban)
+// and completed meetings (S4, table). See OutreachView/MeetingsView.
+export const OUTREACH_STAGES = ['S1', 'S2', 'S3'];
+
 // Linear forward path (excludes LOST). S4 is the terminal stage — a deal is
 // won once it reaches S4.
 export const FORWARD_PATH = [...PROSPECTING_STAGES, ...SALES_STAGES];
@@ -72,32 +76,11 @@ export const TOUCH_OUTCOMES = ['No Response', 'Responded', 'Booked', 'Completed'
 // same convention as current_stage/touch_type).
 export const STAKEHOLDER_ROLES = ['Champion', 'Economic Buyer', 'Blocker', 'Influencer', 'Other'];
 
-// Fallback used before app_settings' deal_health row has loaded. The actual,
-// admin-editable value lives in the DB (see api.js getHealthConfig/enrichDeal).
-export const DEFAULT_HEALTH_THRESHOLD_DAYS = 7;
-
 // A task is overdue once it's still open and its due date has passed.
 // Never stored — always computed at read/render time.
 export function isTaskOverdue(task) {
   if (!task || task.status !== 'open' || !task.due_date) return false;
   return new Date(task.due_date) < new Date(todayInput());
-}
-
-// Color bucket for "days in stage": green 0–7, yellow 8–14, red 15+.
-export function daysInStageColor(days) {
-  if (days <= 7) return 'text-signal';
-  if (days <= 14) return 'text-yellow-400';
-  return 'text-red-400';
-}
-
-// A deal is "stale" once it has sat in its current stage longer than this many
-// days — surfaced as a red flag on the Kanban card. Terminal (LOST) deals never
-// flag. Tune the threshold here.
-export const STALE_STAGE_DAYS = 10;
-
-export function isStaleInStage(deal) {
-  if (!deal || deal.current_stage === 'LOST') return false;
-  return (deal.days_in_stage ?? 0) > STALE_STAGE_DAYS;
 }
 
 // ---------------------------------------------------------------------------

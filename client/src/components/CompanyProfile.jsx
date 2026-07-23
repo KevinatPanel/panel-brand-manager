@@ -288,7 +288,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
                   <span className="w-1.5 h-1.5 bg-signal inline-block" />
                   In Pipeline
                 </span>
-                <Button variant="ghost" onClick={() => navigate('/pipeline')}>
+                <Button variant="ghost" onClick={() => navigate('/outreach')}>
                   View in Pipeline →
                 </Button>
               </div>

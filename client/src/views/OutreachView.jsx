@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
-import { SALES_STAGES, STAGE_LABELS, isStaleInStage } from '../lib/stages.js';
+import { OUTREACH_STAGES, STAGE_LABELS } from '../lib/stages.js';
 import { api } from '../lib/api.js';
 import KanbanBoard from '../components/KanbanBoard.jsx';
 import ViewHeader from '../components/ViewHeader.jsx';
@@ -9,14 +9,14 @@ import Toolbar from '../components/Toolbar.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import { Button, Input, Select } from '../components/ui.jsx';
 
-// Pipeline Board (default view): the active sales cycle S1–S7 plus a collapsed
-// LOST column.
-export default function PipelineView() {
+// Outreach Board: active outreach S1–S3 (Outreach Sent → Meeting Booked) plus
+// a collapsed LOST column. Deals graduate to the Meetings page (S4) via the
+// "Move to S4" action in DealDetailPanel, not by dragging here.
+export default function OutreachView() {
   const { deals, loading, error, openDeal, refresh } = useDeals();
-  const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
 
-  // Search + filter state lives in the URL (?q=&owner=&channel=&stale=1), not
+  // Search + filter state lives in the URL (?q=&owner=&channel=), not
   // component state — the board is a real route that a full deal page
   // navigation away and back will unmount/remount, and this codebase's own
   // convention (see DealsContext) is that anything that should survive that
@@ -25,7 +25,6 @@ export default function PipelineView() {
   const query = searchParams.get('q') ?? '';
   const owner = searchParams.get('owner') ?? '';
   const channel = searchParams.get('channel') ?? '';
-  const staleOnly = searchParams.get('stale') === '1';
 
   function updateParams(patch) {
     const next = new URLSearchParams(searchParams);
@@ -38,7 +37,6 @@ export default function PipelineView() {
   const setQuery = (v) => updateParams({ q: v });
   const setOwner = (v) => updateParams({ owner: v });
   const setChannel = (v) => updateParams({ channel: v });
-  const setStaleOnly = (v) => updateParams({ stale: v ? '1' : '' });
 
   // Distinct owners/channels present in the data, for the filter dropdowns.
   const owners = useMemo(
@@ -50,7 +48,7 @@ export default function PipelineView() {
     [deals],
   );
 
-  const filtersActive = query.trim() || owner || channel || staleOnly;
+  const filtersActive = query.trim() || owner || channel;
 
   // Apply search + filters once; the result feeds every column below.
   const filtered = useMemo(() => {
@@ -62,10 +60,9 @@ export default function PipelineView() {
       }
       if (owner && d.owner !== owner) return false;
       if (channel && d.channel !== channel) return false;
-      if (staleOnly && !isStaleInStage(d)) return false;
       return true;
     });
-  }, [deals, query, owner, channel, staleOnly]);
+  }, [deals, query, owner, channel]);
 
   // Move a dragged card to a new stage. Dropping onto LOST prompts for the
   // required reason and uses markLost(); other stages use setStage().
@@ -86,8 +83,8 @@ export default function PipelineView() {
     }
   };
 
-  // Build one column per sales stage, plus the collapsible LOST column.
-  const columns = SALES_STAGES.map((code) => ({
+  // Build one column per outreach stage, plus the collapsible LOST column.
+  const columns = OUTREACH_STAGES.map((code) => ({
     code,
     label: STAGE_LABELS[code],
     deals: filtered.filter((d) => d.current_stage === code),
@@ -99,22 +96,20 @@ export default function PipelineView() {
     collapsible: true,
   });
 
-  const activeCount = filtered.filter((d) => SALES_STAGES.includes(d.current_stage)).length;
+  const activeCount = filtered.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length;
   const subtitle = filtersActive
-    ? `${activeCount} of ${deals.filter((d) => SALES_STAGES.includes(d.current_stage)).length} deals match`
-    : `${activeCount} deals in the sales cycle`;
+    ? `${activeCount} of ${deals.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length} deals match`
+    : `${activeCount} deals in outreach`;
 
   const clearFilters = () => {
     setQuery('');
     setOwner('');
     setChannel('');
-    setStaleOnly(false);
   };
 
   return (
     <div>
-      <ViewHeader title="Pipeline" subtitle={subtitle}>
-        <Button variant="secondary" onClick={() => navigate('/stage-criteria')}>Stage Criteria</Button>
+      <ViewHeader title="Outreach" subtitle={subtitle}>
         <Button variant="primary" onClick={() => setAdding(true)}>+ Add Deal</Button>
       </ViewHeader>
 
@@ -145,23 +140,7 @@ export default function PipelineView() {
             </Select>
           </>
         }
-        right={
-          <>
-            <button
-              onClick={() => setStaleOnly(!staleOnly)}
-              className={`px-3 py-2 text-[13px] whitespace-nowrap border transition-colors ${
-                staleOnly
-                  ? 'border-red-500/40 text-red-400 bg-red-500/10'
-                  : 'border-hairline text-text-secondary hover:bg-card-hover'
-              }`}
-            >
-              Stale only
-            </button>
-            {filtersActive && (
-              <Button variant="ghost" onClick={clearFilters}>Clear</Button>
-            )}
-          </>
-        }
+        right={filtersActive && <Button variant="ghost" onClick={clearFilters}>Clear</Button>}
       />
 
       {loading ? (

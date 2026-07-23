@@ -8,9 +8,12 @@ import { api } from '../lib/api.js';
 const DealsContext = createContext(null);
 
 // The open deal, if any, is the single source of truth in the URL
-// (/pipeline/:dealId) rather than local state, so it survives refresh, is
-// shareable, and closes itself if the user navigates elsewhere.
-const DEAL_ROUTE_RE = /^\/pipeline\/(\d+)$/;
+// (/outreach/:dealId or /meetings/:dealId) rather than local state, so it
+// survives refresh, is shareable, and closes itself if the user navigates
+// elsewhere. openDeal/closeDeal derive which of the two base paths is
+// current from location.pathname, so the same panel works from either board.
+const DEAL_ROUTE_RE = /^\/(outreach|meetings)\/(\d+)$/;
+const BOARD_BASE_RE = /^\/(outreach|meetings)(\/|$)/;
 
 export function DealsProvider({ children }) {
   const [deals, setDeals] = useState([]);
@@ -38,26 +41,33 @@ export function DealsProvider({ children }) {
 
   useEffect(() => {
     const match = location.pathname.match(DEAL_ROUTE_RE);
-    if (!match && location.pathname.startsWith('/pipeline/')) {
-      // Malformed deal id (e.g. /pipeline/abc) — bounce back to the board.
-      navigate('/pipeline', { replace: true });
+    const baseMatch = location.pathname.match(BOARD_BASE_RE);
+    if (!match && baseMatch && location.pathname !== `/${baseMatch[1]}`) {
+      // Malformed deal id (e.g. /outreach/abc) — bounce back to that board.
+      navigate(`/${baseMatch[1]}`, { replace: true });
       return;
     }
-    const next = match ? Number(match[1]) : null;
+    const next = match ? Number(match[2]) : null;
     setSelectedId((prev) => (prev === next ? prev : next));
   }, [location.pathname, navigate]);
 
   // Preserve the board's filter query string (?q=&owner=&channel=&stale=)
   // across opening/closing the slide-out, so it survives round-tripping
-  // through /pipeline/:dealId the same way it already survives everything
-  // else about this URL-driven pattern.
+  // through /outreach/:dealId or /meetings/:dealId the same way it already
+  // survives everything else about this URL-driven pattern. The base path
+  // (which of the two boards we're on) is read from the current URL so the
+  // panel returns to wherever it was actually opened from.
+  const currentBase = useCallback(() => {
+    const match = location.pathname.match(BOARD_BASE_RE);
+    return match ? `/${match[1]}` : '/outreach';
+  }, [location.pathname]);
   const openDeal = useCallback(
-    (id) => navigate(`/pipeline/${id}${location.search}`),
-    [navigate, location.search],
+    (id) => navigate(`${currentBase()}/${id}${location.search}`),
+    [navigate, currentBase, location.search],
   );
   const closeDeal = useCallback(
-    () => navigate(`/pipeline${location.search}`, { replace: true }),
-    [navigate, location.search],
+    () => navigate(`${currentBase()}${location.search}`, { replace: true }),
+    [navigate, currentBase, location.search],
   );
 
   const value = {

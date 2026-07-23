@@ -114,7 +114,10 @@ export default function DealDetailPanel() {
                 aria-label="Open full record"
                 onClick={() =>
                   navigate(`/deals/${deal.id}`, {
-                    state: { boardSearch: location.search.replace(/^\?/, '') },
+                    state: {
+                      boardSearch: location.search.replace(/^\?/, ''),
+                      boardBase: location.pathname.startsWith('/meetings') ? '/meetings' : '/outreach',
+                    },
                   })
                 }
               />

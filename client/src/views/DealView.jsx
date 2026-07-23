@@ -10,7 +10,6 @@ import TasksSection from '../components/deal/TasksSection.jsx';
 import NotesSection from '../components/deal/NotesSection.jsx';
 import AttachmentsSection from '../components/deal/AttachmentsSection.jsx';
 import ActivityTimeline from '../components/deal/ActivityTimeline.jsx';
-import StageChecklistSection from '../components/deal/StageChecklistSection.jsx';
 
 // Full deal record — the canonical page for a deal, reached at /deals/:dealId
 // (a real route, not a slide-over). Modeled on ClientView.jsx's full-page
@@ -85,12 +84,14 @@ export default function DealView() {
     }
   }
 
-  // Preserve whatever board filter/scroll state we arrived with — passed via
-  // location.state when navigating in from the board — falling back to a
-  // bare board for a cold/direct/shared link.
+  // Preserve whatever board filter/scroll state — and which of the two
+  // boards — we arrived with, passed via location.state when navigating in
+  // from a board. Falls back to a stage-appropriate board for a cold/direct/
+  // shared link (S4 deals live on Meetings, everything else on Outreach).
   function backToBoard() {
     const search = location.state?.boardSearch;
-    navigate(search ? `/pipeline?${search}` : '/pipeline');
+    const base = location.state?.boardBase ?? (deal?.current_stage === 'S4' ? '/meetings' : '/outreach');
+    navigate(search ? `${base}?${search}` : base);
   }
 
   if (notFound) {
@@ -127,7 +128,6 @@ export default function DealView() {
             <Eyebrow>
               {deal.current_stage} · {STAGE_LABELS[deal.current_stage]}
             </Eyebrow>
-            <HealthBadge deal={deal} isLost={isLost} />
           </div>
           <input
             value={deal.brand_name}
@@ -162,8 +162,6 @@ export default function DealView() {
             </section>
 
             <StakeholdersSection dealId={id} />
-
-            <StageChecklistSection dealId={id} stageCode={deal.current_stage} />
 
             <NotesSection dealId={id} />
 
@@ -254,20 +252,5 @@ export default function DealView() {
         </div>
       </div>
     </div>
-  );
-}
-
-// Colored deal-health indicator (see api.js enrichDeal for is_at_risk).
-function HealthBadge({ deal, isLost }) {
-  if (isLost) return null;
-  const atRisk = !!deal.is_at_risk;
-  return (
-    <span
-      className={`eyebrow px-1.5 py-0.5 border ${
-        atRisk ? 'text-red-400 border-red-500/40' : 'text-signal border-signal/40'
-      }`}
-    >
-      {atRisk ? 'At risk' : 'On track'}
-    </span>
   );
 }

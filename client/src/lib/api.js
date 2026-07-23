@@ -19,7 +19,6 @@ import {
   TOUCH_TYPES,
   TOUCH_OUTCOMES,
   STAKEHOLDER_ROLES,
-  DEFAULT_HEALTH_THRESHOLD_DAYS,
   nextStageCode,
   AD_STAGES,
   PLATFORMS,
@@ -52,43 +51,24 @@ function normalizeDomain(raw) {
 
 // ===== Deals =====================================================
 
-// Enrich a deal_summaries row: real boolean + live days_in_stage + computed
-// deal health. is_at_risk is deliberately computed here client-side, not in
-// SQL — days_in_stage/days_in_pipeline are never computed in SQL either, and
-// baking the admin-editable threshold into the deal_summaries view would mean
-// a migration every time someone tweaks it (see 0027's comment).
-function enrichDeal(row, healthThreshold = DEFAULT_HEALTH_THRESHOLD_DAYS) {
+// Enrich a deal_summaries row with live days_in_stage/days_in_pipeline —
+// never computed in SQL, see 0027's comment.
+function enrichDeal(row) {
   const enteredAt = row.current_stage_entered_at ?? null;
   const pipelineAt = row.pipeline_entered_at ?? row.created_at ?? null;
-  const daysInStage = enteredAt ? daysBetween(enteredAt) : 0;
   return {
     ...row,
     fast_track: !!row.fast_track,
     stage_entered_at: enteredAt,
-    days_in_stage: daysInStage,
+    days_in_stage: enteredAt ? daysBetween(enteredAt) : 0,
     pipeline_entered_at: pipelineAt,
     days_in_pipeline: pipelineAt ? daysBetween(pipelineAt) : 0,
-    is_at_risk:
-      row.current_stage !== 'LOST' && daysInStage > healthThreshold && !row.last_touch_in_stage,
   };
 }
 
-// Deal health threshold: fetched once and cached in-memory (admin edits are
-// rare, so a same-session staleness window until next reload is acceptable).
-let healthConfigCache = null;
-async function getHealthThreshold() {
-  if (healthConfigCache) return healthConfigCache.stale_days_threshold;
-  const row = unwrap(
-    await supabase.from('app_settings').select('value').eq('key', 'deal_health').maybeSingle(),
-  );
-  healthConfigCache = row?.value ?? { stale_days_threshold: DEFAULT_HEALTH_THRESHOLD_DAYS };
-  return healthConfigCache.stale_days_threshold;
-}
-
 async function fetchDealSummary(id) {
-  const threshold = await getHealthThreshold();
   const row = unwrap(await supabase.from('deal_summaries').select('*').eq('id', id).single());
-  return enrichDeal(row, threshold);
+  return enrichDeal(row);
 }
 
 // Insert a stage_history row (the trigger syncs deals.current_stage).
@@ -198,18 +178,15 @@ async function rescoreAllLeadsInternal() {
 export const api = {
   // ---- Deals ----
   listDeals: async () => {
-    const threshold = await getHealthThreshold();
     const rows = unwrap(
       await supabase.from('deal_summaries').select('*').order('updated_at', { ascending: false }),
     );
-    return rows.map((r) => enrichDeal(r, threshold));
+    return rows.map((r) => enrichDeal(r));
   },
 
   getDeal: async (id) => {
-    const threshold = await getHealthThreshold();
     const deal = enrichDeal(
       unwrap(await supabase.from('deal_summaries').select('*').eq('id', id).single()),
-      threshold,
     );
     const history = unwrap(
       await supabase
@@ -631,101 +608,6 @@ export const api = {
     );
     await supabase.storage.from('deal-attachments').remove([row.storage_path]);
     unwrap(await supabase.from('deal_attachments').delete().eq('id', attachmentId).eq('deal_id', dealId));
-  },
-
-  // ---- Stage exit checklist (per-deal state) ----
-  getStageChecklist: async (dealId, stageCode) => {
-    const criteria = unwrap(
-      await supabase
-        .from('stage_exit_criteria')
-        .select('*')
-        .eq('stage_code', stageCode)
-        .order('sort_order')
-        .order('id'),
-    );
-    if (!criteria.length) return [];
-    const state = unwrap(
-      await supabase
-        .from('deal_stage_checklist')
-        .select('criterion_id,checked')
-        .eq('deal_id', dealId)
-        .in(
-          'criterion_id',
-          criteria.map((c) => c.id),
-        ),
-    );
-    const checkedById = new Map(state.map((s) => [s.criterion_id, s.checked]));
-    return criteria.map((c) => ({ ...c, checked: checkedById.get(c.id) ?? false }));
-  },
-
-  toggleChecklistItem: async (dealId, criterionId, checked) => {
-    unwrap(
-      await supabase.from('deal_stage_checklist').upsert(
-        { deal_id: dealId, criterion_id: criterionId, checked, updated_at: nowIso() },
-        { onConflict: 'deal_id,criterion_id' },
-      ),
-    );
-  },
-
-  // ---- Stage exit criteria (admin config) ----
-  listStageExitCriteria: async () => {
-    return unwrap(
-      await supabase.from('stage_exit_criteria').select('*').order('stage_code').order('sort_order').order('id'),
-    );
-  },
-
-  addStageExitCriterion: async (stageCode, label) => {
-    const l = (label ?? '').toString().trim();
-    if (!l) throw new Error('label is required');
-    const now = nowIso();
-    return unwrap(
-      await supabase
-        .from('stage_exit_criteria')
-        .insert({ stage_code: stageCode, label: l, sort_order: 0, created_at: now, updated_at: now })
-        .select('*')
-        .single(),
-    );
-  },
-
-  updateStageExitCriterion: async (id, body = {}) => {
-    const patch = { updated_at: nowIso() };
-    if (body.label !== undefined) patch.label = String(body.label).trim();
-    unwrap(await supabase.from('stage_exit_criteria').update(patch).eq('id', id));
-  },
-
-  // Cascades deal_stage_checklist rows for this criterion (FK on delete cascade).
-  deleteStageExitCriterion: async (id) => {
-    unwrap(await supabase.from('stage_exit_criteria').delete().eq('id', id));
-  },
-
-  reorderStageExitCriteria: async (stageCode, orderedIds) => {
-    for (let i = 0; i < orderedIds.length; i++) {
-      unwrap(
-        await supabase
-          .from('stage_exit_criteria')
-          .update({ sort_order: i, updated_at: nowIso() })
-          .eq('id', orderedIds[i])
-          .eq('stage_code', stageCode),
-      );
-    }
-  },
-
-  // ---- Deal health config (admin) ----
-  getHealthConfig: async () => {
-    const threshold = await getHealthThreshold();
-    return { stale_days_threshold: threshold };
-  },
-
-  saveHealthConfig: async (value = {}) => {
-    const n = Number(value.stale_days_threshold);
-    const patch = { stale_days_threshold: Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_HEALTH_THRESHOLD_DAYS };
-    unwrap(
-      await supabase
-        .from('app_settings')
-        .upsert({ key: 'deal_health', value: patch, updated_at: nowIso() }, { onConflict: 'key' }),
-    );
-    healthConfigCache = patch; // write straight to the cache, no refetch needed
-    return patch;
   },
 
   // ---- Activity timeline (merged feed) ----

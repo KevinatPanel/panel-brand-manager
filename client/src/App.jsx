@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import SideNav from './components/SideNav.jsx';
 import { useAuth } from './state/AuthContext.jsx';
 import LoginView from './views/LoginView.jsx';
@@ -7,18 +7,26 @@ import { DealsProvider } from './state/DealsContext.jsx';
 import { LeadsProvider } from './state/LeadsContext.jsx';
 import DealDetailPanel from './components/DealDetailPanel.jsx';
 import HomeView from './views/HomeView.jsx';
-import PipelineView from './views/PipelineView.jsx';
+import OutreachView from './views/OutreachView.jsx';
+import MeetingsView from './views/MeetingsView.jsx';
 import DealView from './views/DealView.jsx';
 import CompanyView from './views/CompanyView.jsx';
 import LeadsView from './views/LeadsView.jsx';
 import PeopleView from './views/PeopleView.jsx';
 import ScoringConfigView from './views/ScoringConfigView.jsx';
-import StageCriteriaConfigView from './views/StageCriteriaConfigView.jsx';
 import SettingsView from './views/SettingsView.jsx';
 import ReviewQueueView from './views/ReviewQueueView.jsx';
 import { InboxProvider } from './state/InboxContext.jsx';
 
 const POST_LOGIN_REDIRECT_KEY = 'post-login-redirect';
+
+// Old /pipeline/:dealId deep links still open the deal panel — just from the
+// Outreach board now. Harmless even if that deal has since reached S4; the
+// panel doesn't care which base route opened it.
+function PipelineDealRedirect() {
+  const { dealId } = useParams();
+  return <Navigate to={`/outreach/${dealId}`} replace />;
+}
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -66,10 +74,15 @@ export default function App() {
           <div className="flex-1 min-w-0">
             <main>
               <Routes>
-              <Route path="/" element={<Navigate to="/pipeline" replace />} />
+              <Route path="/" element={<Navigate to="/outreach" replace />} />
               <Route path="/home" element={<HomeView />} />
-              <Route path="/pipeline" element={<PipelineView />} />
-              <Route path="/pipeline/:dealId" element={<PipelineView />} />
+              <Route path="/outreach" element={<OutreachView />} />
+              <Route path="/outreach/:dealId" element={<OutreachView />} />
+              <Route path="/meetings" element={<MeetingsView />} />
+              <Route path="/meetings/:dealId" element={<MeetingsView />} />
+              {/* Old combined Pipeline route — keep old links/bookmarks working. */}
+              <Route path="/pipeline" element={<Navigate to="/outreach" replace />} />
+              <Route path="/pipeline/:dealId" element={<PipelineDealRedirect />} />
               <Route path="/deals/:dealId" element={<DealView />} />
               <Route path="/clients/:id" element={<CompanyView />} />
               <Route path="/leads" element={<LeadsView />} />
@@ -77,13 +90,12 @@ export default function App() {
               <Route path="/people" element={<PeopleView />} />
               <Route path="/people/:personId" element={<PeopleView />} />
               <Route path="/scoring-config" element={<ScoringConfigView />} />
-              <Route path="/stage-criteria" element={<StageCriteriaConfigView />} />
               <Route path="/settings" element={<SettingsView />} />
               {/* OAuth callback redirects to /integrations?connected=1 — keep it
                   mapped to Settings so the round-trip lands on this page. */}
               <Route path="/integrations" element={<SettingsView />} />
               <Route path="/inbox" element={<ReviewQueueView />} />
-              <Route path="*" element={<Navigate to="/pipeline" replace />} />
+              <Route path="*" element={<Navigate to="/outreach" replace />} />
               </Routes>
             </main>
           </div>

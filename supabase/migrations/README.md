@@ -44,6 +44,7 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0033 | `0033_merge_leads.sql` | `merge_leads(winner_id, loser_id)` RPC — folds a duplicate company into another and deletes it |
 | 0034 | `0034_fix_company_suggestion_stale_match.sql` | Fix `accept_company_suggestion` re-creating a duplicate lead when `matched_lead_id` went stale |
 | 0035 | `0035_leads_domain_unique_index.sql` | Partial unique index on `leads.domain` (after existing duplicate-domain leads were merged) |
+| 0036 | `0036_drop_stage_criteria.sql` | Drop `stage_exit_criteria` + `deal_stage_checklist` (Stage Criteria feature removed); clear the orphaned `deal_health` row from `app_settings` |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number
