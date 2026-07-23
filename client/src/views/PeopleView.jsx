@@ -71,13 +71,12 @@ function PeopleRoster() {
       ) : (
         <div className="py-2">
           {/* Column header */}
-          <div className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1fr_auto_auto] gap-4 px-6 py-2 border-b border-hairline">
+          <div className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-2 border-b border-hairline">
             <Col>Name</Col>
             <Col>Title</Col>
             <Col>Company</Col>
+            <Col>Email</Col>
             <Col>Last touch</Col>
-            <Col>Touches</Col>
-            <Col>LinkedIn</Col>
           </div>
 
           {filtered.length === 0 ? (
@@ -87,29 +86,14 @@ function PeopleRoster() {
               <div
                 key={p.id}
                 onClick={() => openPerson(p.id)}
-                className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1fr_auto_auto] gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
+                className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
               >
                 <div className="text-text-primary text-[13px] truncate">{p.name || '—'}</div>
                 <div className="text-text-secondary text-[13px] truncate">{p.title || '—'}</div>
                 <div className="text-text-secondary text-[13px] truncate">{p.company_name || '—'}</div>
+                <div className="text-text-secondary text-[13px] truncate">{p.email || '—'}</div>
                 <div className="text-text-secondary text-[12px] truncate">
                   {p.last_touch_at ? relativeTime(p.last_touch_at) : <span className="text-text-disabled">Never</span>}
-                </div>
-                <div className="font-mono text-text-secondary text-[12px] text-center">{p.touch_count}</div>
-                <div className="text-[12px] text-center">
-                  {p.linkedin ? (
-                    <a
-                      href={p.linkedin.startsWith('http') ? p.linkedin : `https://${p.linkedin}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-text-muted hover:text-signal"
-                    >
-                      in↗
-                    </a>
-                  ) : (
-                    <span className="text-text-disabled">—</span>
-                  )}
                 </div>
               </div>
             ))
