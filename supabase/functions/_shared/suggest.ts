@@ -146,7 +146,7 @@ export async function suggestFromSentMessage(
   // --- Get-or-create the company suggestion (respect prior dismissal). ---
   const companySugExisting = await db
     .from("company_suggestions")
-    .select("id, status")
+    .select("id, status, matched_lead_id")
     .eq("user_id", conn.user_id)
     .eq("domain", dom)
     .limit(1)
@@ -163,6 +163,17 @@ export async function suggestFromSentMessage(
       await db
         .from("company_suggestions")
         .update({ status: "pending", resolved_at: null })
+        .eq("id", companySuggestionId);
+    }
+    // matched_lead_id was only ever set at row-creation time. If a lead for this
+    // domain now exists (created manually, via Apollo, or via a sibling
+    // suggestion) but this row still thinks it doesn't, refresh it — otherwise
+    // accepting this suggestion later would create a duplicate company instead
+    // of attaching to the one that already exists.
+    if (companySugExisting.data.matched_lead_id == null && matchedLeadId != null) {
+      await db
+        .from("company_suggestions")
+        .update({ matched_lead_id: matchedLeadId })
         .eq("id", companySuggestionId);
     }
   } else {

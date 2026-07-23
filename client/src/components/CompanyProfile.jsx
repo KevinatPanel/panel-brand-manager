@@ -5,6 +5,7 @@ import { useLeads } from '../state/LeadsContext.jsx';
 import { relativeTime } from '../lib/leads.js';
 import { fmtDate } from '../lib/dates.js';
 import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
+import SearchSelect from './SearchSelect.jsx';
 import SignalControl from './SignalControl.jsx';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
@@ -37,6 +38,10 @@ export default function CompanyProfile({ leadId, onDeleted }) {
   const [lead, setLead] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeCompanies, setMergeCompanies] = useState([]);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeError, setMergeError] = useState(null);
 
   const load = useCallback(async () => {
     if (leadId == null) return;
@@ -52,8 +57,26 @@ export default function CompanyProfile({ leadId, onDeleted }) {
   useEffect(() => {
     setLead(null);
     setShowDelete(false);
+    setShowMerge(false);
+    setMergeTargetId('');
     load();
   }, [leadId, load]);
+
+  // Companies list for the "merge into" picker, loaded lazily when opened —
+  // matches AddPersonModal's company picker (listLeads + alphabetical sort).
+  useEffect(() => {
+    if (!showMerge) return;
+    api
+      .listLeads()
+      .then((rows) =>
+        setMergeCompanies(
+          [...rows]
+            .filter((r) => r.id !== leadId)
+            .sort((a, b) => (a.company_name ?? '').localeCompare(b.company_name ?? '')),
+        ),
+      )
+      .catch((e) => setMergeError(e.message));
+  }, [showMerge, leadId]);
 
   // Delete the lead entirely, then notify the caller and refresh the board.
   async function deleteLead() {
@@ -64,6 +87,25 @@ export default function CompanyProfile({ leadId, onDeleted }) {
       await refresh();
     } catch (e) {
       alert(e.message);
+      setBusy(false);
+    }
+  }
+
+  // Merge this company into another (it becomes the loser and is deleted —
+  // see merge_leads RPC), then bounce back like a delete.
+  async function mergeInto() {
+    if (!mergeTargetId) {
+      setMergeError('Choose a company to merge into.');
+      return;
+    }
+    setBusy(true);
+    setMergeError(null);
+    try {
+      await api.mergeLeads(Number(mergeTargetId), lead.id);
+      onDeleted?.();
+      await refresh();
+    } catch (e) {
+      setMergeError(e.message);
       setBusy(false);
     }
   }
@@ -257,6 +299,45 @@ export default function CompanyProfile({ leadId, onDeleted }) {
               >
                 Start Outreach →
               </Button>
+            )}
+
+            {showMerge ? (
+              <div className="border border-hairline p-3 space-y-2">
+                <div className="text-text-secondary text-[12px]">
+                  Merge <span className="text-text-primary">{lead.company_name}</span> into another
+                  company — its contacts, ad items, signals, and spend history move over, then this
+                  record is deleted. This cannot be undone.
+                </div>
+                <SearchSelect
+                  value={mergeTargetId}
+                  onChange={setMergeTargetId}
+                  options={mergeCompanies.map((c) => ({ value: c.id, label: c.company_name }))}
+                  placeholder="Select a company…"
+                />
+                {mergeError && <div className="text-red-400 text-[12px]">{mergeError}</div>}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setShowMerge(false);
+                      setMergeTargetId('');
+                      setMergeError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button variant="danger" disabled={busy || !mergeTargetId} onClick={mergeInto}>
+                    Merge
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowMerge(true)}
+                className="text-text-muted hover:text-text-primary text-[12px] transition-colors"
+              >
+                Merge into another company
+              </button>
             )}
 
             {showDelete ? (

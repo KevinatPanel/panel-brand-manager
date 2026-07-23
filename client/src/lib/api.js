@@ -37,6 +37,19 @@ function unwrap({ data, error }) {
   return data;
 }
 
+// Normalize a website/domain input the same way the Gmail scanner does
+// (supabase/functions/_shared/match.ts normalizeDomain) — lowercase, strip
+// protocol/leading "www."/path. Used so manually-created companies get the
+// same `domain` value the outreach matcher and leads_domain_unique rely on.
+function normalizeDomain(raw) {
+  if (!raw) return '';
+  let d = String(raw).trim().toLowerCase();
+  d = d.replace(/^https?:\/\//, '');
+  d = d.replace(/^www\./, '');
+  d = d.split('/')[0];
+  return d.includes('.') ? d : '';
+}
+
 // ===== Deals =====================================================
 
 // Enrich a deal_summaries row: real boolean + live days_in_stage + computed
@@ -855,6 +868,20 @@ export const api = {
     if (!verticalId && body.vertical_name && String(body.vertical_name).trim()) {
       verticalId = await resolveVertical(String(body.vertical_name).trim());
     }
+    // Same domain check the Gmail scanner relies on (see suggest.ts) — catch a
+    // manual duplicate before it's created, not after, and point at the
+    // existing record instead of a raw unique-constraint error.
+    const domain = normalizeDomain(body.website);
+    if (domain) {
+      const existing = unwrap(
+        await supabase.from('leads').select('id, company_name').eq('domain', domain).limit(1).maybeSingle(),
+      );
+      if (existing) {
+        throw new Error(
+          `"${existing.company_name}" already exists in the CRM with this domain — open it instead of creating a duplicate.`,
+        );
+      }
+    }
     const now = nowIso();
     const id = unwrap(
       await supabase
@@ -863,6 +890,7 @@ export const api = {
           company_name: String(body.company_name).trim(),
           vertical_id: verticalId,
           website: body.website ?? null,
+          domain: domain || null,
           hq_location: body.hq_location ?? null,
           headcount: body.headcount ?? null,
           description: body.description ?? null,
@@ -912,6 +940,68 @@ export const api = {
   deleteLead: async (id) => {
     unwrap(await supabase.from('leads').delete().eq('id', id));
     return { deleted: true };
+  },
+
+  // ---- Duplicate detection & merge ----
+  // Groups leads into merge candidates two ways: (a) same non-blank domain —
+  // the strong signal accept_company_suggestion matches on, so these are the
+  // ones the Gmail auto-detector should have coalesced but didn't (see
+  // 0034_fix_company_suggestion_stale_match.sql) — and (b) same normalized
+  // company_name, for older leads created before `domain` existed or where
+  // outreach landed on a different domain for the same company. Domain groups
+  // are near-certain dupes; name groups need a human to confirm.
+  findDuplicateLeads: async () => {
+    const leads = unwrap(
+      await supabase
+        .from('leads')
+        .select('id, company_name, domain, website, is_client, in_pipeline, deal_id, created_at')
+        .order('created_at', { ascending: true }),
+    );
+    const allContacts = unwrap(await supabase.from('lead_contacts').select('lead_id'));
+    const countByLead = new Map();
+    for (const c of allContacts) countByLead.set(c.lead_id, (countByLead.get(c.lead_id) ?? 0) + 1);
+    const withCounts = leads.map((l) => ({ ...l, contact_count: countByLead.get(l.id) ?? 0 }));
+
+    const byDomain = new Map();
+    for (const l of withCounts) {
+      const d = (l.domain || '').trim().toLowerCase();
+      if (!d) continue;
+      if (!byDomain.has(d)) byDomain.set(d, []);
+      byDomain.get(d).push(l);
+    }
+
+    const normalizeName = (name) =>
+      String(name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+(inc\.?|llc\.?|co\.?|corp\.?|ltd\.?)$/i, '')
+        .trim();
+    const byName = new Map();
+    for (const l of withCounts) {
+      const n = normalizeName(l.company_name);
+      if (!n) continue;
+      if (!byName.has(n)) byName.set(n, []);
+      byName.get(n).push(l);
+    }
+
+    const groups = [];
+    const groupKey = (list) => list.map((l) => l.id).sort((a, b) => a - b).join(',');
+    for (const group of byDomain.values()) {
+      if (group.length < 2) continue;
+      groups.push({ reason: 'domain', leads: group });
+    }
+    for (const group of byName.values()) {
+      if (group.length < 2) continue;
+      const key = groupKey(group);
+      if (groups.some((g) => groupKey(g.leads) === key)) continue;
+      groups.push({ reason: 'name', leads: group });
+    }
+    return groups;
+  },
+
+  mergeLeads: async (winnerId, loserId) => {
+    unwrap(await supabase.rpc('merge_leads', { p_winner_id: winnerId, p_loser_id: loserId }));
+    return leadSummaryById(winnerId);
   },
 
   setSignal: async (id, key, body = {}) => {

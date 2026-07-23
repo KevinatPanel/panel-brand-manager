@@ -133,7 +133,19 @@ async function enrichCompany(db: SupabaseClient, leadId: number, force: boolean)
   if (isEmpty(lead.description) && org.short_description) patch.description = org.short_description;
 
   const { error: upErr } = await db.from("leads").update(patch).eq("id", leadId);
-  if (upErr) return json({ ok: false, error: "enrich_failed", message: upErr.message }, 500);
+  if (upErr) {
+    // Apollo found a domain that another lead already owns (leads_domain_unique) —
+    // that's an existing-duplicate-company problem, not an enrichment failure.
+    if (upErr.code === "23505" && String(upErr.message).includes("leads_domain_unique")) {
+      return json({
+        ok: false,
+        error: "duplicate_domain",
+        message:
+          "Another company in the CRM already has this domain. Use Find Duplicates on the Companies board to merge them.",
+      }, 409);
+    }
+    return json({ ok: false, error: "enrich_failed", message: upErr.message }, 500);
+  }
 
   // Feed the scoring rubric (only when Apollo gave us a usable value).
   const signals: string[] = [];

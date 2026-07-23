@@ -8,6 +8,7 @@ import LeadGroup from '../components/LeadGroup.jsx';
 import CompaniesNav from '../components/CompaniesNav.jsx';
 import AddLeadModal from '../components/AddLeadModal.jsx';
 import EnrichAllButton from '../components/EnrichAllButton.jsx';
+import FindDuplicatesModal from '../components/FindDuplicatesModal.jsx';
 
 // Lead Intelligence Board — vertical groups of scored, ranked lead cards.
 // LeadsProvider is mounted app-wide (see App.jsx) so leads are searchable
@@ -15,6 +16,7 @@ import EnrichAllButton from '../components/EnrichAllButton.jsx';
 export default function LeadsView() {
   const { leads, verticals, loading, error, refresh, openLead } = useLeads();
   const [adding, setAdding] = useState(false);
+  const [findingDupes, setFindingDupes] = useState(false);
   // Per-group open overrides (id -> bool). When a group has no override it falls
   // back to its default: open if it has leads, collapsed if empty (matching the
   // original board behaviour).
@@ -155,6 +157,9 @@ export default function LeadsView() {
       <div className="sticky top-0 z-20 bg-space">
         <ViewHeader title="Companies" subtitle={`${leads.length} companies`}>
           <EnrichAllButton mode="companies" onDone={refresh} />
+          <Button variant="secondary" onClick={() => setFindingDupes(true)}>
+            Find Duplicates
+          </Button>
           <Button variant="secondary" onClick={() => navigate('/scoring-config')}>
             Scoring Config
           </Button>
@@ -199,6 +204,10 @@ export default function LeadsView() {
 
       {adding && (
         <AddLeadModal verticals={verticals} onClose={() => setAdding(false)} onCreated={refresh} />
+      )}
+
+      {findingDupes && (
+        <FindDuplicatesModal onClose={() => setFindingDupes(false)} onMerged={refresh} />
       )}
     </div>
   );

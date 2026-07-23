@@ -41,6 +41,9 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0030 | `0030_ad_tracker.sql` | `ad_items` + `ad_item_stage_history` tables, stage-sync trigger, `ad_item_summaries` view |
 | 0031 | `0031_ad_items_creator_link.sql` | Replace `ad_items.creator_name`/`creator_handle` with a single `creator_link` column |
 | 0032 | `0032_client_spend_goals.sql` | `leads.everflow_advertiser_id`, `client_spend_goals` + `client_spend_actuals` tables |
+| 0033 | `0033_merge_leads.sql` | `merge_leads(winner_id, loser_id)` RPC — folds a duplicate company into another and deletes it |
+| 0034 | `0034_fix_company_suggestion_stale_match.sql` | Fix `accept_company_suggestion` re-creating a duplicate lead when `matched_lead_id` went stale |
+| 0035 | `0035_leads_domain_unique_index.sql` | Partial unique index on `leads.domain` (after existing duplicate-domain leads were merged) |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number
