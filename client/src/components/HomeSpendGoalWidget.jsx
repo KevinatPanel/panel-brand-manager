@@ -40,20 +40,22 @@ function useRevealed() {
 
 // Home dashboard widget: current-month spend vs. goal summed across every
 // current client (is_client), with an expand button to a per-client
-// breakdown (HomeSpendGoalModal). Read-only — goal editing stays on each
-// client's own profile page.
+// breakdown (HomeSpendGoalModal) and a sync button to pull fresh numbers
+// from Everflow for every client on demand. Goal editing still stays on
+// each client's own profile page (SpendGoalModal).
 export default function HomeSpendGoalWidget() {
   const { leads } = useLeads();
   const [goals, setGoals] = useState(null);
   const [actuals, setActuals] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [ref, revealed] = useRevealed();
 
   const clients = leads.filter((l) => l.is_client);
   const clientIds = clients.map((c) => c.id);
   const month = monthKey();
 
-  useEffect(() => {
+  const load = () => {
     Promise.all([api.listSpendGoalsForMonth(clientIds, month), api.listSpendActualsForMonth(clientIds, month)])
       .then(([g, a]) => {
         setGoals(g);
@@ -63,9 +65,23 @@ export default function HomeSpendGoalWidget() {
         setGoals([]);
         setActuals([]);
       });
-    // clientIds is a fresh array each render — join to a stable dep key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientIds.join(','), month]);
+  };
+
+  // clientIds is a fresh array each render — join to a stable dep key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [clientIds.join(','), month]);
+
+  async function syncAll() {
+    setBusy(true);
+    try {
+      await api.syncAllSpendActuals();
+      load();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const loading = goals === null || actuals === null;
   const totalGoal = (goals ?? []).reduce((sum, g) => sum + (g.goal_amount ?? 0), 0);
@@ -77,13 +93,22 @@ export default function HomeSpendGoalWidget() {
     <div ref={ref} className="border border-hairline p-5 max-w-md">
       <div className="flex items-center justify-between mb-3">
         <Eyebrow>Spend vs. goal — all clients</Eyebrow>
-        <IconButton
-          icon="expand"
-          title="Open per-client breakdown"
-          aria-label="Open per-client breakdown"
-          onClick={() => setExpanded(true)}
-          disabled={loading}
-        />
+        <div className="flex items-center gap-1">
+          <IconButton
+            icon="sync"
+            title="Sync all clients from Everflow"
+            aria-label="Sync all clients from Everflow"
+            onClick={syncAll}
+            disabled={loading || busy}
+          />
+          <IconButton
+            icon="expand"
+            title="Open per-client breakdown"
+            aria-label="Open per-client breakdown"
+            onClick={() => setExpanded(true)}
+            disabled={loading || busy}
+          />
+        </div>
       </div>
 
       {loading ? (

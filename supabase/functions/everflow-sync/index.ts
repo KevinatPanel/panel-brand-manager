@@ -8,13 +8,13 @@
 //         not just the current month.
 //       - month given: syncs that single month only (used internally by the
 //         scheduled batch below; not currently exposed in the UI).
-//   - Scheduled batch (service role only, via pg_cron — see
-//     docs/everflow-integration-setup.md): {} — loops every client with an
-//     everflow_advertiser_id set, syncing the current + previous month (the
-//     previous month catches late conversion corrections after month-close).
-//     Deliberately NOT widened to full history — that stays a manual,
-//     on-demand action so the daily cron doesn't hammer Everflow for every
-//     client every day.
+//   - Scheduled batch (service role via pg_cron, OR any logged-in rep's JWT —
+//     see docs/everflow-integration-setup.md — e.g. the Home page's "Sync
+//     all" button): {} — loops every client with an everflow_advertiser_id
+//     set, syncing the current + previous month (the previous month catches
+//     late conversion corrections after month-close). Deliberately NOT
+//     widened to full history — that stays a manual, on-demand action so
+//     frequent runs don't hammer Everflow for every client every time.
 //
 // Response contract (so the client stays simple): handled outcomes return
 // HTTP 200 with { ok, ... }; only auth/bad-input/unexpected use non-2xx.
@@ -42,9 +42,9 @@ function jwtRole(token: string): string | null {
   }
 }
 
-// The scheduled batch sync must only run from the service role (pg_cron, or
-// a self-invoke) — reject anon/authenticated callers so a logged-in rep can't
-// trigger a global run against every client.
+// True only for the service role (pg_cron, or a self-invoke) — the batch
+// path also accepts an authenticated rep JWT as a fallback (checked by the
+// caller below), but never an anon/unauthenticated caller.
 function requireServiceRole(req: Request): boolean {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
@@ -102,9 +102,13 @@ Deno.serve(async (req) => {
 
   const db = serviceClient();
 
-  // Scheduled batch: service role only, no leadId — loop every client.
+  // Scheduled batch, no leadId — loop every client. Callable by the service
+  // role (pg_cron) or any authenticated rep (the Home page's "Sync all" button).
   if (payload.leadId == null) {
-    if (!requireServiceRole(req)) return json({ ok: false, error: "unauthorized" }, 401);
+    if (!requireServiceRole(req)) {
+      const user = await userFromRequest(req);
+      if (!user) return json({ ok: false, error: "unauthorized" }, 401);
+    }
     return await syncAll(db);
   }
 

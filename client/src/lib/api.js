@@ -1411,6 +1411,13 @@ export const api = {
     return api.listSpendActuals(leadId);
   },
 
+  // Bulk sync for every client with an Everflow Advertiser ID — the Home
+  // page's "Sync all" button. Current + previous month only (syncAll's
+  // server-side scope), not full history — see syncSpendActuals for that.
+  syncAllSpendActuals: async () => {
+    return invokeEverflowSync({});
+  },
+
   // Bulk, single-month reads across many clients at once — the Home page
   // rollup widget's aggregate, as opposed to the per-client history above.
   // Scoped to one month + an explicit lead_id list to keep egress small.

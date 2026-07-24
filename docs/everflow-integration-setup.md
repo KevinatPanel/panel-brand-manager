@@ -46,36 +46,52 @@ supabase functions deploy everflow-sync
 
 ---
 
-## 5. Schedule the daily sync (pg_cron)
+## 5. Sync every 15 minutes (pg_cron) — DONE, live in prod
 
-Spend doesn't need `gmail-poll`'s ~2-min cadence — once a day is enough to
-keep the current month fresh. `pg_cron`/`pg_net` should already be enabled
-(they're shared with the Gmail integration's pollers; see
-`docs/gmail-integration-setup.md` §4 if they aren't yet).
-
-In the SQL editor:
+`pg_cron`/`pg_net` are enabled (shared with the Gmail integration's pollers)
+and a vault secret named `service_role_key` already exists — `gmail-poll` and
+`calendar-poll` both reference it the same way. The `everflow-sync-15min` job
+(id 5) reuses that same secret, so no raw key ever needed to be pasted
+anywhere:
 
 ```sql
 select cron.schedule(
-  'everflow-daily-sync',
-  '0 12 * * *',  -- daily at noon UTC
+  'everflow-sync-15min',
+  '*/15 * * * *',  -- every 15 minutes
   $$
   select net.http_post(
-    url := 'https://sexvfnypyhojgppwrpxo.functions.supabase.co/everflow-sync',
+    url := 'https://sexvfnypyhojgppwrpxo.supabase.co/functions/v1/everflow-sync',
     headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || '<service-role-key>',
-      'Content-Type', 'application/json'
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')
     ),
-    body := '{}'::jsonb
-  )
+    body := '{}'::jsonb,
+    timeout_milliseconds := 30000
+  );
   $$
 );
 ```
 
-Replace `<service-role-key>` with the project's service-role key (Dashboard →
-Project Settings → API) — `everflow-sync`'s batch path (`{}` body, no
-`leadId`) only accepts calls authenticated as the service role, same guard as
-`gmail-poll`/`calendar-poll`.
+`everflow-sync`'s batch path (`{}` body, no `leadId`) accepts calls
+authenticated as either the service role (this cron job) or a logged-in
+rep's JWT (the Home page's "Sync all" button), same guard pattern as
+`gmail-poll`/`calendar-poll` but widened to also allow reps.
+
+Note: `syncAll()` syncs current + previous month for every client with an
+Everflow Advertiser ID (10 as of this writing — 20 sequential Everflow calls
+per run), not full history, so a 15-minute cadence stays cheap per run. It
+also degrades gracefully if Everflow rate-limits a call — that client is
+just counted as `skipped`, not a hard failure. `timeout_milliseconds` only
+bounds how long pg_net waits to capture the HTTP response for logging; it
+doesn't cut the sync short server-side if it runs long.
+
+To check on or change the schedule later:
+
+```sql
+select jobid, jobname, schedule, active from cron.job;
+select * from cron.job_run_details where jobid = 5 order by start_time desc limit 5;
+select cron.unschedule('everflow-sync-15min');  -- to stop it
+```
 
 ---
 
@@ -86,6 +102,10 @@ Project Settings → API) — `everflow-sync`'s batch path (`{}` body, no
    readable error (e.g. no data for that advertiser/month yet).
 2. Check `public.client_spend_actuals` for a row with a non-null `revenue`
    and a recent `synced_at`.
-3. The next day, confirm `synced_at` advanced on its own (cron ran) without a
-   manual click — check `select cron.job_run_details` or the function's logs
-   for the scheduled invocation.
+3. After ~15 minutes, confirm `synced_at` advanced on its own (cron ran)
+   without a manual click — check `select * from cron.job_run_details order
+   by start_time desc limit 5;` or the function's logs for the scheduled
+   invocation.
+4. On the Home page, click the spend widget's "Sync all" button — confirm it
+   disables while running and `synced_at` advances for every client with an
+   Everflow Advertiser ID.
