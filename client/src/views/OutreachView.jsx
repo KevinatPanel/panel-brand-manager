@@ -55,7 +55,7 @@ export default function OutreachView() {
     const q = query.trim().toLowerCase();
     return deals.filter((d) => {
       if (q) {
-        const hay = `${d.brand_name ?? ''} ${d.owner ?? ''}`.toLowerCase();
+        const hay = `${d.company_name ?? ''} ${d.owner ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (owner && d.owner !== owner) return false;

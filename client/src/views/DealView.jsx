@@ -26,15 +26,10 @@ export default function DealView() {
 
   const [deal, setDeal] = useState(null);
   const [notFound, setNotFound] = useState(false);
-  const [verticals, setVerticals] = useState([]);
   const [busy, setBusy] = useState(false);
   const [showLost, setShowLost] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [showDelete, setShowDelete] = useState(false);
-
-  useEffect(() => {
-    api.listVerticals().then(setVerticals).catch(() => {});
-  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -129,12 +124,16 @@ export default function DealView() {
               {deal.current_stage} · {STAGE_LABELS[deal.current_stage]}
             </Eyebrow>
           </div>
-          <input
-            value={deal.brand_name}
-            onChange={(e) => setDeal({ ...deal, brand_name: e.target.value })}
-            onBlur={(e) => patch({ brand_name: e.target.value })}
-            className="bg-transparent text-text-primary text-[24px] font-medium outline-none w-full"
-          />
+          <div className="text-text-primary text-[24px] font-medium truncate">{deal.company_name}</div>
+          {/* Company name/vertical are edited from the company profile now
+              (leads is the single source of truth, see 0039), not here. */}
+          <button
+            type="button"
+            onClick={() => navigate(`/${deal.is_client ? 'clients' : 'leads'}/${deal.lead_id}`)}
+            className="text-signal hover:underline text-[13px] mt-1"
+          >
+            View Company →
+          </button>
         </div>
       </div>
 
@@ -158,7 +157,7 @@ export default function DealView() {
           <div className="w-full max-w-[720px] space-y-8">
             <section>
               <Eyebrow className="mb-3">Overview</Eyebrow>
-              <DealOverviewFields deal={deal} verticals={verticals} patch={patch} />
+              <DealOverviewFields deal={deal} patch={patch} />
             </section>
 
             <StakeholdersSection dealId={id} />
@@ -172,8 +171,8 @@ export default function DealView() {
               {showDelete ? (
                 <div className="border border-red-500/30 p-3 space-y-2 max-w-md">
                   <div className="text-text-secondary text-[12px]">
-                    Permanently delete <span className="text-text-primary">{deal.brand_name}</span> and its
-                    full history? This cannot be undone.
+                    Permanently delete <span className="text-text-primary">{deal.company_name}</span>'s deal and
+                    its full history? This cannot be undone.
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>

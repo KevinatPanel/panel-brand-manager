@@ -97,7 +97,7 @@ function SuggestionCard({ sug, deals, onResolve, onOpenThread }) {
             value=""
             disabled={busy}
             onChange={(id) => attach(id)}
-            options={deals.map((d) => ({ value: d.id, label: d.brand_name }))}
+            options={deals.map((d) => ({ value: d.id, label: d.company_name }))}
             placeholder="Attach to existing deal…"
             className="flex-1"
           />
@@ -124,7 +124,7 @@ function StageMoveCard({ sug, deals, onResolve, onOpenThread }) {
   const { openDeal, refresh: refreshDeals } = useDeals();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const dealName = deals.find((d) => d.id === sug.proposed_deal_id)?.brand_name ?? 'this deal';
+  const dealName = deals.find((d) => d.id === sug.proposed_deal_id)?.company_name ?? 'this deal';
 
   async function run(fn) {
     setBusy(true);

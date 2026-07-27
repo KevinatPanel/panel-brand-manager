@@ -11,7 +11,7 @@ import { Button, Input, Select, ChannelTag } from '../components/ui.jsx';
 const GRID_COLS = '1.4fr 1fr 1.3fr 0.9fr 1.1fr 0.9fr 1fr';
 
 const COLUMNS = [
-  { key: 'brand_name', label: 'Brand' },
+  { key: 'company_name', label: 'Brand' },
   { key: 'owner', label: 'Owner' },
   { key: 'primary_stakeholder_name', label: 'Primary Contact' },
   { key: 'channel', label: 'Channel' },
@@ -64,7 +64,7 @@ export default function MeetingsView() {
   const matchesFilters = (d) => {
     if (query.trim()) {
       const q = query.trim().toLowerCase();
-      const hay = `${d.brand_name ?? ''} ${d.owner ?? ''}`.toLowerCase();
+      const hay = `${d.company_name ?? ''} ${d.owner ?? ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (owner && d.owner !== owner) return false;
@@ -205,7 +205,7 @@ function DealRow({ deal, onClick }) {
       className="grid gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
       style={{ gridTemplateColumns: GRID_COLS }}
     >
-      <div className="text-text-primary text-[13px] truncate">{deal.brand_name}</div>
+      <div className="text-text-primary text-[13px] truncate">{deal.company_name}</div>
       <div className="text-text-secondary text-[13px] truncate">{deal.owner ?? '—'}</div>
       <div className="text-text-secondary text-[13px] truncate">{deal.primary_stakeholder_name ?? '—'}</div>
       <div><ChannelTag channel={deal.channel} /></div>

@@ -213,41 +213,12 @@ export const api = {
     return { ...deal, stage_history, touches };
   },
 
-  createDeal: async (body = {}) => {
-    if (!body.brand_name || !String(body.brand_name).trim()) {
-      throw new Error('brand_name is required');
-    }
-    const stage = STAGE_CODES.includes(body.current_stage) ? body.current_stage : 'S1';
-    const startAt = normalizeDateInput(body.entered_at);
-    const id = unwrap(
-      await supabase
-        .from('deals')
-        .insert({
-          brand_name: String(body.brand_name).trim(),
-          vertical: body.vertical ?? null,
-          owner: OWNERS.includes(body.owner) ? body.owner : null,
-          source: SOURCES.includes(body.source) ? body.source : null,
-          current_stage: stage,
-          channel: CHANNELS.includes(body.channel) ? body.channel : null,
-          fast_track: !!body.fast_track,
-          pilot_spend: body.pilot_spend !== '' && body.pilot_spend != null ? Number(body.pilot_spend) : null,
-          contact_id: body.contact_id ? Number(body.contact_id) : null,
-          intent_notes: body.intent_notes ?? null,
-          closed_lost_reason: null,
-          created_at: startAt,
-          updated_at: startAt,
-        })
-        .select('id')
-        .single(),
-    ).id;
-    await recordStage(id, stage, startAt);
-    return fetchDealSummary(id);
-  },
+  // Deal creation always goes through startLeadOutreach() (start_outreach()
+  // RPC) now — every deal requires a lead_id, so there's no standalone
+  // "create a deal" path left; see AddDealModal's search-or-create flow.
 
   updateDeal: async (id, body = {}) => {
     const patch = { updated_at: nowIso() };
-    if (body.brand_name !== undefined) patch.brand_name = String(body.brand_name).trim();
-    if (body.vertical !== undefined) patch.vertical = body.vertical;
     if (body.owner !== undefined) patch.owner = OWNERS.includes(body.owner) ? body.owner : null;
     if (body.source !== undefined) patch.source = SOURCES.includes(body.source) ? body.source : null;
     if (body.channel !== undefined) patch.channel = CHANNELS.includes(body.channel) ? body.channel : null;
@@ -955,8 +926,22 @@ export const api = {
     return { ...(await leadSummaryById(id)), score, contacts };
   },
 
-  startLeadOutreach: async (id) => {
-    const dealId = unwrap(await supabase.rpc('start_outreach', { p_lead_id: id }));
+  // extra: optional { owner, source, channel, pilot_spend, contact_id, entered_at }
+  // collected by the "+ Add Deal" search-or-create flow — the plain
+  // CompanyProfile "Start Outreach →" button calls this with no extra args
+  // and gets the RPC's defaults (Outbound, today), same as before.
+  startLeadOutreach: async (id, extra = {}) => {
+    const dealId = unwrap(
+      await supabase.rpc('start_outreach', {
+        p_lead_id: id,
+        p_owner: OWNERS.includes(extra.owner) ? extra.owner : null,
+        p_source: SOURCES.includes(extra.source) ? extra.source : 'Outbound',
+        p_channel: CHANNELS.includes(extra.channel) ? extra.channel : null,
+        p_pilot_spend: extra.pilot_spend !== '' && extra.pilot_spend != null ? Number(extra.pilot_spend) : null,
+        p_contact_id: extra.contact_id ? Number(extra.contact_id) : null,
+        p_entered_at: extra.entered_at ? normalizeDateInput(extra.entered_at) : nowIso(),
+      }),
+    );
     return { ...(await leadSummaryById(id)), deal_id: dealId };
   },
 

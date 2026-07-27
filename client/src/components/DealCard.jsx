@@ -25,7 +25,7 @@ export default function DealCard({ deal, onClick }) {
     >
       <div className="min-w-0">
         <div className="text-text-primary text-[13px] font-medium truncate">
-          {deal.brand_name}
+          {deal.company_name}
         </div>
         <div className="text-text-secondary text-[12px] mt-0.5 truncate">
           {deal.owner ?? '—'}

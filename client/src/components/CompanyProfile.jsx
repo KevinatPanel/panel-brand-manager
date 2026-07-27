@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useLeads } from '../state/LeadsContext.jsx';
+import { useDeals } from '../state/DealsContext.jsx';
 import { relativeTime } from '../lib/leads.js';
 import { fmtDate } from '../lib/dates.js';
 import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
@@ -35,6 +36,7 @@ function PointsBadge({ points, maxPoints }) {
 //   onDeleted  — called after the company is deleted (caller navigates away)
 export default function CompanyProfile({ leadId, onDeleted }) {
   const { verticals, config, refresh } = useLeads();
+  const { deals } = useDeals();
   const navigate = useNavigate();
   const [lead, setLead] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -292,7 +294,14 @@ export default function CompanyProfile({ leadId, onDeleted }) {
                   <span className="w-1.5 h-1.5 bg-signal inline-block" />
                   In Pipeline
                 </span>
-                <Button variant="ghost" onClick={() => navigate('/outreach')}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    const deal = deals.find((d) => d.id === lead.deal_id);
+                    const base = deal?.current_stage === 'S4' ? '/meetings' : '/outreach';
+                    navigate(lead.deal_id ? `${base}/${lead.deal_id}` : base);
+                  }}
+                >
                   View in Pipeline →
                 </Button>
               </div>

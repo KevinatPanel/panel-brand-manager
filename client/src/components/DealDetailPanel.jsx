@@ -22,15 +22,10 @@ export default function DealDetailPanel() {
   const navigate = useNavigate();
   const location = useLocation();
   const [deal, setDeal] = useState(null);
-  const [verticals, setVerticals] = useState([]);
   const [busy, setBusy] = useState(false);
   const [showLost, setShowLost] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [showDelete, setShowDelete] = useState(false);
-
-  useEffect(() => {
-    api.listVerticals().then(setVerticals).catch(() => {});
-  }, []);
 
   const load = useCallback(async () => {
     if (selectedId == null) return;
@@ -100,12 +95,18 @@ export default function DealDetailPanel() {
               <Eyebrow className="mb-1">
                 {deal.current_stage} · {STAGE_LABELS[deal.current_stage]}
               </Eyebrow>
-              <input
-                value={deal.brand_name}
-                onChange={(e) => setDeal({ ...deal, brand_name: e.target.value })}
-                onBlur={(e) => patch({ brand_name: e.target.value })}
-                className="bg-transparent text-text-primary text-[18px] font-medium outline-none w-full"
-              />
+              <div className="text-text-primary text-[18px] font-medium truncate">
+                {deal.company_name}
+              </div>
+              {/* Company name/vertical are edited from the company profile now
+                  (leads is the single source of truth, see 0039), not here. */}
+              <button
+                type="button"
+                onClick={() => navigate(`/${deal.is_client ? 'clients' : 'leads'}/${deal.lead_id}`)}
+                className="text-signal hover:underline text-[12px] mt-0.5"
+              >
+                View Company →
+              </button>
             </div>
             <div className="flex items-center gap-1.5 ml-3 shrink-0">
               <IconButton
@@ -181,7 +182,7 @@ export default function DealDetailPanel() {
 
           {/* Editable fields */}
           <div className="px-5 py-4 border-b border-hairline space-y-3">
-            <DealOverviewFields deal={deal} verticals={verticals} patch={patch} />
+            <DealOverviewFields deal={deal} patch={patch} />
             <Field label="Point of Contact">
               <ContactSelect
                 value={deal.contact_id ?? ''}
@@ -236,7 +237,7 @@ export default function DealDetailPanel() {
             {showDelete ? (
               <div className="border border-red-500/30 p-3 space-y-2">
                 <div className="text-text-secondary text-[12px]">
-                  Permanently delete <span className="text-text-primary">{deal.brand_name}</span> and its
+                  Permanently delete <span className="text-text-primary">{deal.company_name}</span>'s deal and its
                   full history? This cannot be undone.
                 </div>
                 <div className="flex justify-end gap-2">

@@ -7,7 +7,10 @@ import { Field, Input, Select, Eyebrow } from '../ui.jsx';
 // shared grid: the slide-out keeps its own ContactSelect field as-is, and the
 // full page's Stakeholders section supersedes it there (see plan judgment
 // call on deals.contact_id staying untouched for this feature).
-export default function DealOverviewFields({ deal, verticals, patch }) {
+// Vertical is read-only here — it's the company's vertical (leads.vertical_id,
+// via deal_summaries' join), edited from the company profile, not per-deal
+// (see 0039_unify_deal_lead_identity).
+export default function DealOverviewFields({ deal, patch }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       <Field label="Owner">
@@ -16,15 +19,10 @@ export default function DealOverviewFields({ deal, verticals, patch }) {
           {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
         </Select>
       </Field>
-      <Field label="Vertical">
-        <Select value={deal.vertical ?? ''} onChange={(e) => patch({ vertical: e.target.value })}>
-          <option value="">Unsorted</option>
-          {verticals.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
-          {deal.vertical && !verticals.some((v) => v.name === deal.vertical) && (
-            <option value={deal.vertical}>{deal.vertical}</option>
-          )}
-        </Select>
-      </Field>
+      <div>
+        <Eyebrow className="mb-1">Vertical</Eyebrow>
+        <span className="font-mono text-[13px] text-text-primary">{deal.vertical_name ?? '—'}</span>
+      </div>
       <Field label="Source">
         <Select value={deal.source ?? ''} onChange={(e) => patch({ source: e.target.value })}>
           <option value="">—</option>
