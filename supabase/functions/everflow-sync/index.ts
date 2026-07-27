@@ -102,6 +102,21 @@ function previousMonth(month: string): string {
 const HISTORY_EMPTY_STREAK_STOP = 3;
 const HISTORY_MAX_MONTHS = 60;
 
+// Pacing for the history walk-back: a short delay between every month
+// proactively spreads out what would otherwise be up to 120 back-to-back
+// Everflow calls (60 months × spend+quality), rather than only reacting
+// after tripping Everflow's rate limit. HISTORY_RATE_LIMIT_BACKOFF_MS is a
+// one-shot cooldown-and-retry for the spend call specifically if a 429
+// still gets through — a spend rate-limit currently aborts the whole walk,
+// far more costly than a single quality miss, so it's worth one retry
+// before falling back to today's "stop cleanly, keep what synced" behavior.
+const HISTORY_STEP_DELAY_MS = 200;
+const HISTORY_RATE_LIMIT_BACKOFF_MS = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -300,9 +315,13 @@ async function syncOneResponse(db: SupabaseClient, leadId: number, month: string
 // Manual "Sync from Everflow" default path: walk backward from the current
 // month, syncing every month found, until HISTORY_EMPTY_STREAK_STOP
 // consecutive months come back empty (we've likely walked past when this
-// advertiser started) or HISTORY_MAX_MONTHS is hit (hard safety cap). A
-// rate-limit from Everflow stops the walk early rather than failing the
-// whole request — whatever synced so far is already committed.
+// advertiser started) or HISTORY_MAX_MONTHS is hit (hard safety cap). Paced
+// with a short delay between months (HISTORY_STEP_DELAY_MS) so a long
+// backfill doesn't fire dozens of Everflow calls back-to-back; a rate-limit
+// that still gets through gets one cooldown-and-retry
+// (HISTORY_RATE_LIMIT_BACKOFF_MS) before falling back to stopping the walk
+// early rather than failing the whole request — whatever synced so far is
+// already committed.
 async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response> {
   const lookup = await lookupAdvertiser(db, leadId);
   if (!lookup.ok) return lookup.response;
@@ -320,10 +339,21 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
       result = await syncMonth(db, leadId, lookup.advertiserId, month);
     } catch (e) {
       if (e instanceof EverflowError && e.code === "rate_limited") {
-        stopped = "rate_limited";
-        break;
+        // One cooldown-and-retry before giving up — pacing between months
+        // should make this rare, but Everflow's own load can still trip it.
+        await sleep(HISTORY_RATE_LIMIT_BACKOFF_MS);
+        try {
+          result = await syncMonth(db, leadId, lookup.advertiserId, month);
+        } catch (e2) {
+          if (e2 instanceof EverflowError && e2.code === "rate_limited") {
+            stopped = "rate_limited";
+            break;
+          }
+          throw e2;
+        }
+      } else {
+        throw e;
       }
-      throw e;
     }
 
     const quality = await syncQualityIfConfigured(db, leadId, lookup, month);
@@ -342,6 +372,7 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
     }
 
     month = previousMonth(month);
+    await sleep(HISTORY_STEP_DELAY_MS);
   }
 
   return json({
