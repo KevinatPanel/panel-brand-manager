@@ -23,6 +23,11 @@ export default {
         hairline: 'rgba(255,255,255,0.08)', // Dividers/borders
         // Signal Green — active states, status dots, CTAs ONLY
         signal: '#37FA77',
+        // Benchmark Blue — comparison/second-series lines ONLY (e.g. vertical
+        // average vs. a client's own line). Validated against `signal` with
+        // the dataviz skill's CVD/contrast checks against this app's dark
+        // background (#0A0C12) before adding.
+        benchmark: '#4EA8FF',
         // Text ramp (white at varying opacity)
         'text-primary': 'rgba(255,255,255,1.0)',
         'text-secondary': 'rgba(255,255,255,0.55)',

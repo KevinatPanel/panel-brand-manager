@@ -736,6 +736,7 @@ export const api = {
       enriched_at: lead.enriched_at ?? null,
       enriched_source: lead.enriched_source ?? null,
       everflow_advertiser_id: lead.everflow_advertiser_id ?? null,
+      everflow_quality_event_name: lead.everflow_quality_event_name ?? null,
       signals: signalMap,
       contacts,
       points: breakdown,
@@ -813,6 +814,11 @@ export const api = {
     if (body.everflow_advertiser_id !== undefined) {
       patch.everflow_advertiser_id = body.everflow_advertiser_id
         ? String(body.everflow_advertiser_id).trim()
+        : null;
+    }
+    if (body.everflow_quality_event_name !== undefined) {
+      patch.everflow_quality_event_name = body.everflow_quality_event_name
+        ? String(body.everflow_quality_event_name).trim()
         : null;
     }
     unwrap(await supabase.from('leads').update(patch).eq('id', id));
@@ -1416,6 +1422,61 @@ export const api = {
   // server-side scope), not full history — see syncSpendActuals for that.
   syncAllSpendActuals: async () => {
     return invokeEverflowSync({});
+  },
+
+  // ---- Quality Events (Everflow) ----
+  // A per-client secondary conversion event (e.g. "Payroll" for Current —
+  // distinct from the billable/base event) representing real quality rather
+  // than volume. Rides along on the same everflow-sync calls as spend above
+  // (syncSpendActuals/syncAllSpendActuals) — there's no separate sync
+  // trigger; this just reads what that sync already wrote. Excludes
+  // everflow_raw like listSpendActuals does, for the same reason.
+  listQualityActuals: async (leadId) => {
+    return unwrap(
+      await supabase
+        .from('client_quality_actuals')
+        .select('id, lead_id, month, event_name, event_count, event_revenue, billed_event_count, synced_at')
+        .eq('lead_id', leadId)
+        .order('month', { ascending: false }),
+    );
+  },
+
+  // Every client in a vertical with quality tracking configured, for the
+  // "quality vs. vertical average" benchmark line — ONE shared average per
+  // vertical, so the same number shows on every member's page (deliberately
+  // includes the client currently being viewed, not just its peers — a
+  // client's own data is one input into "the vertical average," same as
+  // everyone else's). verticalId null groups with other unsorted leads,
+  // matching the "Unsorted" bucket convention used elsewhere (LeadsView.jsx).
+  // Returns each lead's own event name too, so callers can filter that
+  // lead's client_quality_actuals rows to only the ones matching their
+  // CURRENT event name — a lead's event name can change over time (rows
+  // under an old name are kept as history, not overwritten), so matching by
+  // name avoids quietly averaging in stale data from before a rename.
+  listVerticalMemberIds: async (verticalId) => {
+    let query = supabase
+      .from('leads')
+      .select('id, everflow_quality_event_name')
+      .not('everflow_quality_event_name', 'is', null);
+    query = verticalId == null ? query.is('vertical_id', null) : query.eq('vertical_id', verticalId);
+    return unwrap(await query);
+  },
+
+  // Bulk quality-actuals read across many leads at once (mirrors
+  // listSpendGoalsForMonth/listSpendActualsForMonth's bulk pattern below,
+  // but across all months rather than one — the benchmark line needs a full
+  // trend, not a single-month snapshot). Includes event_name so callers can
+  // filter each lead's rows to its current event name (see
+  // listVerticalMemberIds). Excludes event_revenue/synced_at/everflow_raw —
+  // only what averaging needs.
+  listQualityActualsForLeads: async (leadIds) => {
+    if (leadIds.length === 0) return [];
+    return unwrap(
+      await supabase
+        .from('client_quality_actuals')
+        .select('lead_id, month, event_name, event_count, billed_event_count')
+        .in('lead_id', leadIds),
+    );
   },
 
   // Bulk, single-month reads across many clients at once — the Home page

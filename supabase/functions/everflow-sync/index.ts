@@ -16,17 +16,29 @@
 //     widened to full history — that stays a manual, on-demand action so
 //     frequent runs don't hammer Everflow for every client every time.
 //
+// Quality event sync (secondary conversion event, e.g. "Payroll" for Current
+// — distinct from the base/billable event, e.g. downloads) rides along
+// automatically on every path above whenever a lead has
+// leads.everflow_quality_event_name set, using the same advertiser lookup and
+// month range. A quality-sync failure (misspelled event name, Everflow
+// hiccup) is absorbed and reported alongside — it never fails the spend sync,
+// which is the older, primary feature.
+//
 // Response contract (so the client stays simple): handled outcomes return
 // HTTP 200 with { ok, ... }; only auth/bad-input/unexpected use non-2xx.
-//   - single month, matched:    { ok:true, matched:true, revenue, payout, synced_at }
-//   - single month, no match:   { ok:true, matched:false, reason }
+//   - single month, matched:    { ok:true, matched:true, revenue, payout, synced_at,
+//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason? }
+//   - single month, no match:   { ok:true, matched:false, reason,
+//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason? }
+//     (qualityMatched/eventCount/eventRevenue/qualityReason are only present
+//     when the lead has a quality event name configured)
 //   - history walk-back:        { ok:true, historySync:true, synced: N, checked: N,
-//                                  stopped: 'no_data'|'cap'|'rate_limited' }
-//   - batch:      { ok:true, synced: N, skipped: N }
+//                                  stopped: 'no_data'|'cap'|'rate_limited', qualitySynced?: N }
+//   - batch:      { ok:true, synced: N, skipped: N, qualitySynced: N, qualitySkipped: N }
 //   - everflow err: { ok:false, error:'rate_limited'|'unauthorized'|'everflow_error', message }
 import { serviceClient, userFromRequest } from "../_shared/supabase.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { EverflowError, fetchAdvertiserRevenue } from "../_shared/everflow.ts";
+import { EverflowError, fetchAdvertiserQualityEvent, fetchAdvertiserRevenue } from "../_shared/everflow.ts";
 
 // Decode (without verifying — the gateway already verified the signature when
 // verify_jwt=true) a JWT payload to read the role claim. Duplicated from
@@ -165,13 +177,85 @@ async function syncMonth(
   return { matched: true, revenue: result.revenue, payout: result.payout, synced_at: now };
 }
 
+type QualitySyncResult =
+  | {
+      matched: true;
+      eventCount: number | null;
+      eventRevenue: number | null;
+      billedEventCount: number | null;
+      synced_at: string;
+    }
+  | { matched: false; reason: string };
+
+// Fetches + upserts one advertiser's named quality event for one month.
+// Mirrors syncMonth's shape; reused by the single-month, history, and batch
+// paths via syncQualityIfConfigured below.
+async function syncQualityMonth(
+  db: SupabaseClient,
+  leadId: number,
+  advertiserId: string,
+  eventName: string,
+  month: string,
+): Promise<QualitySyncResult> {
+  const { start, end } = monthRange(month);
+  const result = await fetchAdvertiserQualityEvent(advertiserId, eventName, start, end);
+  if (!result) {
+    return { matched: false, reason: `No "${eventName}" event data for this advertiser in this month.` };
+  }
+
+  const now = new Date().toISOString();
+  const { error: upErr } = await db.from("client_quality_actuals").upsert(
+    {
+      lead_id: leadId,
+      month,
+      event_name: eventName,
+      event_count: result.eventCount,
+      event_revenue: result.eventRevenue,
+      billed_event_count: result.billedEventCount,
+      everflow_raw: result.raw,
+      synced_at: now,
+    },
+    { onConflict: "lead_id,month,event_name" },
+  );
+  if (upErr) throw new Error(upErr.message);
+
+  return {
+    matched: true,
+    eventCount: result.eventCount,
+    eventRevenue: result.eventRevenue,
+    billedEventCount: result.billedEventCount,
+    synced_at: now,
+  };
+}
+
+// Runs the quality sync only if this lead has a quality event name
+// configured; absorbs errors (a misspelled event name or an Everflow hiccup
+// on the quality call must never fail the spend sync, which is the older,
+// primary feature) rather than throwing.
+async function syncQualityIfConfigured(
+  db: SupabaseClient,
+  leadId: number,
+  lookup: { advertiserId: string; qualityEventName: string | null },
+  month: string,
+): Promise<QualitySyncResult | null> {
+  if (!lookup.qualityEventName) return null;
+  try {
+    return await syncQualityMonth(db, leadId, lookup.advertiserId, lookup.qualityEventName, month);
+  } catch (e) {
+    return { matched: false, reason: String((e as Error)?.message ?? e) };
+  }
+}
+
 async function lookupAdvertiser(
   db: SupabaseClient,
   leadId: number,
-): Promise<{ ok: true; advertiserId: string } | { ok: false; response: Response }> {
+): Promise<
+  | { ok: true; advertiserId: string; qualityEventName: string | null }
+  | { ok: false; response: Response }
+> {
   const { data: lead, error } = await db
     .from("leads")
-    .select("id, everflow_advertiser_id")
+    .select("id, everflow_advertiser_id, everflow_quality_event_name")
     .eq("id", leadId)
     .single();
   if (error || !lead) {
@@ -183,7 +267,11 @@ async function lookupAdvertiser(
       response: json({ ok: true, matched: false, reason: "Add an Everflow Advertiser ID first." }),
     };
   }
-  return { ok: true, advertiserId: lead.everflow_advertiser_id };
+  return {
+    ok: true,
+    advertiserId: lead.everflow_advertiser_id,
+    qualityEventName: lead.everflow_quality_event_name ?? null,
+  };
 }
 
 async function syncOneResponse(db: SupabaseClient, leadId: number, month: string): Promise<Response> {
@@ -191,14 +279,22 @@ async function syncOneResponse(db: SupabaseClient, leadId: number, month: string
   if (!lookup.ok) return lookup.response;
 
   const result = await syncMonth(db, leadId, lookup.advertiserId, month);
-  if (!result.matched) return json({ ok: true, matched: false, reason: result.reason });
-  return json({
-    ok: true,
-    matched: true,
-    revenue: result.revenue,
-    payout: result.payout,
-    synced_at: result.synced_at,
-  });
+  const quality = await syncQualityIfConfigured(db, leadId, lookup, month);
+
+  const body: Record<string, unknown> = result.matched
+    ? { ok: true, matched: true, revenue: result.revenue, payout: result.payout, synced_at: result.synced_at }
+    : { ok: true, matched: false, reason: result.reason };
+
+  if (quality) {
+    Object.assign(
+      body,
+      quality.matched
+        ? { qualityMatched: true, eventCount: quality.eventCount, eventRevenue: quality.eventRevenue }
+        : { qualityMatched: false, qualityReason: quality.reason },
+    );
+  }
+
+  return json(body);
 }
 
 // Manual "Sync from Everflow" default path: walk backward from the current
@@ -213,6 +309,7 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
 
   let month = monthRange().start;
   let synced = 0;
+  let qualitySynced = 0;
   let checked = 0;
   let emptyStreak = 0;
   let stopped: "no_data" | "cap" | "rate_limited" = "cap";
@@ -229,6 +326,9 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
       throw e;
     }
 
+    const quality = await syncQualityIfConfigured(db, leadId, lookup, month);
+    if (quality?.matched) qualitySynced++;
+
     if (result.matched) {
       synced++;
       emptyStreak = 0;
@@ -244,7 +344,14 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
     month = previousMonth(month);
   }
 
-  return json({ ok: true, historySync: true, synced, checked, stopped });
+  return json({
+    ok: true,
+    historySync: true,
+    synced,
+    checked,
+    stopped,
+    ...(lookup.qualityEventName ? { qualitySynced } : {}),
+  });
 }
 
 async function syncAll(db: SupabaseClient): Promise<Response> {
@@ -259,6 +366,8 @@ async function syncAll(db: SupabaseClient): Promise<Response> {
 
   let synced = 0;
   let skipped = 0;
+  let qualitySynced = 0;
+  let qualitySkipped = 0;
   for (const lead of leads ?? []) {
     for (const month of [currentMonth, prevMonth]) {
       try {
@@ -266,10 +375,14 @@ async function syncAll(db: SupabaseClient): Promise<Response> {
         const body = await res.clone().json();
         if (body.matched) synced++;
         else skipped++;
+        if (typeof body.qualityMatched === "boolean") {
+          if (body.qualityMatched) qualitySynced++;
+          else qualitySkipped++;
+        }
       } catch {
         skipped++;
       }
     }
   }
-  return json({ ok: true, synced, skipped });
+  return json({ ok: true, synced, skipped, qualitySynced, qualitySkipped });
 }

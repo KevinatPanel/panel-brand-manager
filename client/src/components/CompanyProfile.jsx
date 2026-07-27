@@ -10,6 +10,7 @@ import SignalControl from './SignalControl.jsx';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
 import SpendGoalWidget from './SpendGoalWidget.jsx';
+import QualityMetricWidget from './QualityMetricWidget.jsx';
 
 const isDateValue = (v) => v && !['Yes', 'No', 'Unknown'].includes(v) && !Number.isNaN(Date.parse(v));
 
@@ -209,6 +210,9 @@ export default function CompanyProfile({ leadId, onDeleted }) {
                 />
               </Field>
               <EverflowAdvertiserIdField lead={lead} busy={busy} after={after} />
+              {lead.everflow_advertiser_id && (
+                <EverflowQualityEventNameField lead={lead} after={after} />
+              )}
             </div>
 
             <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
@@ -368,6 +372,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
       {/* Right sidebar — Spend vs. Goal, Contacts, Ad Tracker, Activity */}
       <div className="w-[420px] shrink-0 h-full overflow-y-auto">
         <SpendGoalWidget lead={lead} />
+        <QualityMetricWidget lead={lead} />
         <ContactsSection lead={lead} busy={busy} after={after} />
         <AdTrackerSection leadId={lead.id} />
         <ActivitySection leadId={lead.id} />
@@ -431,6 +436,28 @@ function EverflowAdvertiserIdField({ lead, busy, after }) {
           </div>
         </div>
       )}
+    </Field>
+  );
+}
+
+// Free-text name of this client's secondary "quality" conversion event in
+// Everflow (e.g. "Payroll" for Current) — distinct from the billable/base
+// event the Spend & Goals sync tracks. Unlike the Advertiser ID above, changing
+// this only affects which secondary metric QualityMetricWidget displays; it
+// never redirects spend/goal syncing, so a plain save-on-blur is fine — no
+// confirm step needed.
+function EverflowQualityEventNameField({ lead, after }) {
+  const current = lead.everflow_quality_event_name ?? '';
+
+  function handleBlur(e) {
+    const next = e.target.value.trim();
+    if (next === current) return;
+    after(() => api.updateLead(lead.id, { everflow_quality_event_name: next || null }));
+  }
+
+  return (
+    <Field label="Everflow Quality Event">
+      <Input key={`efqe-${current}`} defaultValue={current} onBlur={handleBlur} placeholder="e.g. Payroll" />
     </Field>
   );
 }
