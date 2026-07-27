@@ -25,7 +25,6 @@ export default function AddDealModal({ onClose, onCreated }) {
     owner: '',
     source: 'Outbound',
     channel: 'Email',
-    pilot_spend: '',
     contact_id: '',
     entered_at: todayInput(), // start date — backdate for historical accounts
   });
@@ -82,7 +81,6 @@ export default function AddDealModal({ onClose, onCreated }) {
         owner: form.owner,
         source: form.source,
         channel: form.channel,
-        pilot_spend: form.pilot_spend,
         contact_id: form.contact_id,
         entered_at: form.entered_at,
       });
@@ -163,7 +161,7 @@ export default function AddDealModal({ onClose, onCreated }) {
           <ContactSelect value={form.contact_id} onChange={set('contact_id')} />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Field label="Owner">
             <Select value={form.owner} onChange={set('owner')}>
               <option value="">Unassigned</option>
@@ -179,25 +177,12 @@ export default function AddDealModal({ onClose, onCreated }) {
               ))}
             </Select>
           </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
           <Field label="Channel">
             <Select value={form.channel} onChange={set('channel')}>
               {CHANNELS.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </Select>
-          </Field>
-          <Field label="Pilot Spend (USD)">
-            <Input
-              type="number"
-              min="0"
-              value={form.pilot_spend}
-              onChange={set('pilot_spend')}
-              placeholder="15000"
-              className="font-mono"
-            />
           </Field>
         </div>
 

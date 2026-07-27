@@ -1,7 +1,7 @@
 import { OWNERS, SOURCES, CHANNELS } from '../../lib/stages.js';
-import { Field, Input, Select, Eyebrow } from '../ui.jsx';
+import { Field, Select, Eyebrow } from '../ui.jsx';
 
-// Owner/Vertical/Source/Channel/Pilot Spend/Days-in-Pipeline — shared by the
+// Owner/Vertical/Source/Channel/Days-in-Pipeline — shared by the
 // slide-out and the full deal page so both autosave the same way instead of
 // drifting into two copies. Point of Contact is deliberately NOT part of this
 // shared grid: the slide-out keeps its own ContactSelect field as-is, and the
@@ -34,15 +34,6 @@ export default function DealOverviewFields({ deal, patch }) {
           <option value="">—</option>
           {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
-      </Field>
-      <Field label="Pilot Spend (USD)">
-        <Input
-          type="number"
-          min="0"
-          defaultValue={deal.pilot_spend ?? ''}
-          onBlur={(e) => patch({ pilot_spend: e.target.value === '' ? null : Number(e.target.value) })}
-          className="font-mono"
-        />
       </Field>
       <div className="self-end">
         <Eyebrow className="mb-1">Days in pipeline</Eyebrow>

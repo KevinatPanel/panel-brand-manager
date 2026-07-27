@@ -223,8 +223,6 @@ export const api = {
     if (body.source !== undefined) patch.source = SOURCES.includes(body.source) ? body.source : null;
     if (body.channel !== undefined) patch.channel = CHANNELS.includes(body.channel) ? body.channel : null;
     if (body.fast_track !== undefined) patch.fast_track = !!body.fast_track;
-    if (body.pilot_spend !== undefined)
-      patch.pilot_spend = body.pilot_spend === '' || body.pilot_spend === null ? null : Number(body.pilot_spend);
     if (body.contact_id !== undefined) patch.contact_id = body.contact_id ? Number(body.contact_id) : null;
     if (body.intent_notes !== undefined) patch.intent_notes = body.intent_notes;
     unwrap(await supabase.from('deals').update(patch).eq('id', id));
@@ -926,7 +924,7 @@ export const api = {
     return { ...(await leadSummaryById(id)), score, contacts };
   },
 
-  // extra: optional { owner, source, channel, pilot_spend, contact_id, entered_at }
+  // extra: optional { owner, source, channel, contact_id, entered_at }
   // collected by the "+ Add Deal" search-or-create flow — the plain
   // CompanyProfile "Start Outreach →" button calls this with no extra args
   // and gets the RPC's defaults (Outbound, today), same as before.
@@ -937,7 +935,6 @@ export const api = {
         p_owner: OWNERS.includes(extra.owner) ? extra.owner : null,
         p_source: SOURCES.includes(extra.source) ? extra.source : 'Outbound',
         p_channel: CHANNELS.includes(extra.channel) ? extra.channel : null,
-        p_pilot_spend: extra.pilot_spend !== '' && extra.pilot_spend != null ? Number(extra.pilot_spend) : null,
         p_contact_id: extra.contact_id ? Number(extra.contact_id) : null,
         p_entered_at: extra.entered_at ? normalizeDateInput(extra.entered_at) : nowIso(),
       }),

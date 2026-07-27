@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
-import { STAGE_LABELS, formatCurrency } from '../lib/stages.js';
+import { STAGE_LABELS } from '../lib/stages.js';
 import { fmtDate } from '../lib/dates.js';
 import ViewHeader from '../components/ViewHeader.jsx';
 import Toolbar from '../components/Toolbar.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import { Button, Input, Select, ChannelTag } from '../components/ui.jsx';
 
-const GRID_COLS = '1.4fr 1fr 1.3fr 0.9fr 1.1fr 0.9fr 1fr';
+const GRID_COLS = '1.4fr 1fr 1.3fr 0.9fr 1.1fr 0.9fr';
 
 const COLUMNS = [
   { key: 'company_name', label: 'Brand' },
@@ -17,7 +17,6 @@ const COLUMNS = [
   { key: 'channel', label: 'Channel' },
   { key: 'current_stage_entered_at', label: 'Meeting Completed' },
   { key: 'days_in_stage', label: 'Days Since' },
-  { key: 'pilot_spend', label: 'Pilot Spend' },
 ];
 
 // Meetings table: deals that have reached S4 (Meeting Completed) — the sales
@@ -211,7 +210,6 @@ function DealRow({ deal, onClick }) {
       <div><ChannelTag channel={deal.channel} /></div>
       <div className="text-text-secondary text-[13px]">{fmtDate(deal.current_stage_entered_at)}</div>
       <div className="font-mono text-text-secondary text-[13px]">{deal.days_in_stage}d</div>
-      <div className="font-mono text-text-secondary text-[13px]">{formatCurrency(deal.pilot_spend)}</div>
     </div>
   );
 }

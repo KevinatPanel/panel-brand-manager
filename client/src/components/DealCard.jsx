@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { formatCurrency } from '../lib/stages.js';
 import { ChannelTag } from './ui.jsx';
 
 // A single deal card for the Kanban boards.
-// Shows brand (primary), owner (secondary), days-in-pipeline (mono), channel,
-// and pilot spend (mono). Clicking opens the Deal Detail panel; the card is also
+// Shows brand (primary), owner (secondary), days-in-pipeline (mono), and
+// channel. Clicking opens the Deal Detail panel; the card is also
 // draggable so it can be dropped onto another stage column.
 export default function DealCard({ deal, onClick }) {
   const [dragging, setDragging] = useState(false);
@@ -39,12 +38,6 @@ export default function DealCard({ deal, onClick }) {
           <span className="eyebrow text-text-muted">in pipeline</span>
         </div>
         <ChannelTag channel={deal.channel} />
-      </div>
-
-      <div className="mt-2 pt-2 border-t border-hairline">
-        <span className="font-mono text-[12px] text-text-secondary">
-          {formatCurrency(deal.pilot_spend)}
-        </span>
       </div>
     </button>
   );
