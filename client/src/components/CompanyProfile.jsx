@@ -3,29 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useLeads } from '../state/LeadsContext.jsx';
 import { useDeals } from '../state/DealsContext.jsx';
-import { relativeTime } from '../lib/leads.js';
 import { fmtDate } from '../lib/dates.js';
-import { Field, Input, TextArea, Select, Button, Eyebrow } from './ui.jsx';
+import { Field, Input, Button, Eyebrow } from './ui.jsx';
 import SearchSelect from './SearchSelect.jsx';
-import SignalControl from './SignalControl.jsx';
-import AnimatedNumber from './AnimatedNumber.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
 import SpendGoalWidget from './SpendGoalWidget.jsx';
 import QualityMetricWidget from './QualityMetricWidget.jsx';
-
-const isDateValue = (v) => v && !['Yes', 'No', 'Unknown'].includes(v) && !Number.isNaN(Date.parse(v));
-
-// Points earned, shown inline to the right of each signal.
-function PointsBadge({ points, maxPoints }) {
-  if (maxPoints === 0) {
-    return <span className="eyebrow text-text-disabled">Info</span>;
-  }
-  return (
-    <span className={`font-mono text-[12px] ${points > 0 ? 'text-signal' : 'text-text-disabled'}`}>
-      +{points}
-    </span>
-  );
-}
+import ScoreBadge from './company/ScoreBadge.jsx';
+import EnrichmentSection from './company/EnrichmentSection.jsx';
+import SignalsSection from './company/SignalsSection.jsx';
+import FirmographicsFields from './company/FirmographicsFields.jsx';
 
 // The full company/client profile: two independently-scrolling columns, same
 // pattern as DealView.jsx — firmographics/enrichment/signals/account actions
@@ -129,26 +116,8 @@ export default function CompanyProfile({ leadId, onDeleted }) {
     }
   }
 
-  // Save a signal, always sending both value + notes so neither is wiped.
-  function saveSignal(key, patch) {
-    const cur = lead.signals[key] ?? {};
-    const merged = {
-      value: patch.value !== undefined ? patch.value : (cur.value ?? null),
-      notes: patch.notes !== undefined ? patch.notes : (cur.notes ?? null),
-    };
-    after(() => api.setSignal(lead.id, key, merged));
-  }
-
   if (!lead || !config) {
     return <div className="p-6 text-text-secondary text-[13px]">Loading…</div>;
-  }
-
-  // Group signals by category in configured order.
-  const signalsByCategory = new Map();
-  for (const cat of config.categories) signalsByCategory.set(cat, []);
-  for (const s of config.signals) {
-    if (!signalsByCategory.has(s.category)) signalsByCategory.set(s.category, []);
-    signalsByCategory.get(s.category).push(s);
   }
 
   return (
@@ -161,121 +130,21 @@ export default function CompanyProfile({ leadId, onDeleted }) {
             <div className="text-text-primary text-[20px] font-semibold truncate">
               {lead.company_name}
             </div>
-            <div className="flex items-baseline gap-2 mt-1">
-              <AnimatedNumber
-                value={lead.score}
-                className="font-mono text-signal text-[22px] leading-none"
-              />
-              <span className="font-mono text-text-muted text-[13px]">/100</span>
-              <span className="text-text-disabled text-[11px] ml-1">
-                updated {relativeTime(lead.score_updated_at)}
-              </span>
-            </div>
+            <ScoreBadge score={lead.score} updatedAt={lead.score_updated_at} />
 
-            {/* Keyed by enriched_at so Apollo-filled values replace the
-                uncontrolled inputs' DOM value after an enrichment refresh. */}
-            <div key={`hdr-${lead.enriched_at ?? '0'}`} className="grid grid-cols-2 gap-3 mt-4">
-              <Field label="Website">
-                <Input
-                  defaultValue={lead.website ?? ''}
-                  onBlur={(e) => after(() => api.updateLead(lead.id, { website: e.target.value }))}
-                  placeholder="acme.com"
-                />
-              </Field>
-              <Field label="Vertical">
-                <Select
-                  value={lead.vertical_id ?? ''}
-                  onChange={(e) =>
-                    after(() =>
-                      api.updateLead(lead.id, { vertical_id: e.target.value ? Number(e.target.value) : null }),
-                    )
-                  }
-                >
-                  <option value="">Unsorted</option>
-                  {verticals.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="HQ / Location">
-                <Input
-                  defaultValue={lead.hq_location ?? ''}
-                  onBlur={(e) => after(() => api.updateLead(lead.id, { hq_location: e.target.value }))}
-                  placeholder="San Francisco, CA"
-                />
-              </Field>
-              <Field label="Employees / Size">
-                <Input
-                  defaultValue={lead.headcount ?? ''}
-                  onBlur={(e) => after(() => api.updateLead(lead.id, { headcount: e.target.value }))}
-                  placeholder="51-200"
-                />
-              </Field>
+            <FirmographicsFields lead={lead} verticals={verticals} after={after}>
               <EverflowAdvertiserIdField lead={lead} busy={busy} after={after} />
               {lead.everflow_advertiser_id && (
                 <EverflowQualityEventNameField lead={lead} after={after} />
               )}
-            </div>
-
-            <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
-              <Field label="Description">
-                <TextArea
-                  rows={3}
-                  defaultValue={lead.description ?? ''}
-                  onBlur={(e) => after(() => api.updateLead(lead.id, { description: e.target.value }))}
-                  placeholder="What the company does, context, fit…"
-                />
-              </Field>
-            </div>
+            </FirmographicsFields>
           </div>
 
           {/* Enrichment (Apollo) */}
           <EnrichmentSection lead={lead} busy={busy} after={after} />
 
           {/* Signals */}
-          <div className="px-5 py-4 border-b border-hairline">
-            <Eyebrow className="mb-3">Signals</Eyebrow>
-            <div className="space-y-5">
-              {config.categories.map((cat) => {
-                const sigs = signalsByCategory.get(cat) ?? [];
-                if (sigs.length === 0) return null;
-                return (
-                  <div key={cat}>
-                    <div className="text-text-muted text-[11px] mb-2">{cat}</div>
-                    <div className="space-y-3">
-                      {sigs.map((cfg) => {
-                        const sig = lead.signals[cfg.signal_key] ?? {};
-                        const showNotes =
-                          (cfg.has_notes || cfg.has_text) &&
-                          (sig.value === 'Yes' || isDateValue(sig.value) || (sig.notes ?? '') !== '');
-                        return (
-                          <div key={cfg.signal_key}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-text-secondary text-[13px]">{cfg.label}</span>
-                              <PointsBadge points={lead.points?.[cfg.signal_key] ?? 0} maxPoints={cfg.max_points} />
-                            </div>
-                            <SignalControl
-                              config={cfg}
-                              value={sig.value}
-                              onChange={(v) => saveSignal(cfg.signal_key, { value: v })}
-                            />
-                            {showNotes && (
-                              <Input
-                                defaultValue={sig.notes ?? ''}
-                                onBlur={(e) => saveSignal(cfg.signal_key, { notes: e.target.value || null })}
-                                placeholder={cfg.has_text ? 'Name' : 'Notes'}
-                                className="mt-1.5"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <SignalsSection lead={lead} config={config} after={after} />
 
           {/* Footer — client flag, Start Outreach + remove lead */}
           <div className="px-5 py-4 border-t border-hairline space-y-3">
@@ -468,104 +337,6 @@ function EverflowQualityEventNameField({ lead, after }) {
     <Field label="Everflow Quality Event">
       <Input key={`efqe-${current}`} defaultValue={current} onBlur={handleBlur} placeholder="e.g. Payroll" />
     </Field>
-  );
-}
-
-// Apollo enrichment: a one-click "Enrich from Apollo" action plus the enriched
-// firmographic fields (editable so a user can correct them). Needs a domain or
-// website to match on. Fields are keyed by enriched_at so a fresh enrichment
-// replaces the uncontrolled inputs' DOM values on reload.
-function fmtRevenue(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v) || v <= 0) return '';
-  if (v >= 1e9) return `$${+(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `$${+(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `$${+(v / 1e3).toFixed(0)}K`;
-  return `$${v}`;
-}
-
-function EnrichmentSection({ lead, busy, after }) {
-  const canEnrich = !!(lead.website || lead.domain);
-  const techs = Array.isArray(lead.technologies) ? lead.technologies : [];
-
-  return (
-    <div className="px-5 py-4 border-b border-hairline">
-      <div className="flex items-center justify-between mb-3">
-        <Eyebrow>Enrichment</Eyebrow>
-        {lead.enriched_at ? (
-          <Button
-            variant="ghost"
-            disabled={busy || !canEnrich}
-            title="Re-fetch from Apollo (uses a credit)"
-            onClick={() => after(() => api.enrichLead(lead.id, { force: true }))}
-          >
-            ↻ Re-enrich
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            disabled={busy || !canEnrich}
-            title={canEnrich ? 'Pull firmographics from Apollo' : 'Add a website or domain first'}
-            onClick={() => after(() => api.enrichLead(lead.id))}
-          >
-            ↻ Enrich from Apollo
-          </Button>
-        )}
-      </div>
-
-      <div key={`enrich-${lead.enriched_at ?? '0'}`} className="grid grid-cols-2 gap-3">
-        <Field label="Industry">
-          <Input
-            defaultValue={lead.industry ?? ''}
-            onBlur={(e) => after(() => api.updateLead(lead.id, { industry: e.target.value }))}
-            placeholder="e.g. Fintech"
-          />
-        </Field>
-        <Field label="Est. Revenue (USD)">
-          <Input
-            type="number"
-            defaultValue={lead.estimated_revenue ?? ''}
-            onBlur={(e) => after(() => api.updateLead(lead.id, { estimated_revenue: e.target.value }))}
-            placeholder="45000000"
-          />
-        </Field>
-        <Field label="Founded">
-          <Input
-            type="number"
-            defaultValue={lead.founded_year ?? ''}
-            onBlur={(e) => after(() => api.updateLead(lead.id, { founded_year: e.target.value }))}
-            placeholder="2015"
-          />
-        </Field>
-        <div className="flex flex-col justify-end">
-          {lead.estimated_revenue ? (
-            <span className="text-text-muted text-[11px]">≈ {fmtRevenue(lead.estimated_revenue)} / yr</span>
-          ) : null}
-        </div>
-      </div>
-
-      {techs.length > 0 && (
-        <div className="mt-3">
-          <Eyebrow className="mb-1.5">Tech Stack</Eyebrow>
-          <div className="flex flex-wrap gap-1.5">
-            {techs.slice(0, 12).map((t) => (
-              <span key={t} className="eyebrow text-text-secondary border border-hairline px-1.5 py-0.5">
-                {t}
-              </span>
-            ))}
-            {techs.length > 12 && (
-              <span className="text-text-disabled text-[11px]">+{techs.length - 12} more</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="text-text-disabled text-[11px] mt-3">
-        {lead.enriched_at
-          ? `Last enriched ${relativeTime(lead.enriched_at)}`
-          : 'Not yet enriched.'}
-      </div>
-    </div>
   );
 }
 

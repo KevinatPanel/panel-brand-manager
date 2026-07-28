@@ -45,6 +45,14 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0034 | `0034_fix_company_suggestion_stale_match.sql` | Fix `accept_company_suggestion` re-creating a duplicate lead when `matched_lead_id` went stale |
 | 0035 | `0035_leads_domain_unique_index.sql` | Partial unique index on `leads.domain` (after existing duplicate-domain leads were merged) |
 | 0036 | `0036_drop_stage_criteria.sql` | Drop `stage_exit_criteria` + `deal_stage_checklist` (Stage Criteria feature removed); clear the orphaned `deal_health` row from `app_settings` |
+| 0037 | `0037_client_quality_events.sql` | `leads.everflow_quality_event_name`, `client_quality_actuals` table |
+| 0038 | `0038_client_quality_billed_count.sql` | `client_quality_actuals.billed_event_count`; updates `merge_leads()` |
+| 0039 | `0039_unify_deal_lead_identity.sql` | `deals.lead_id` required+unique FK; drops `deals.brand_name`/`vertical`; `start_outreach()` becomes the single deal-creation path |
+| 0040 | `0040_drop_deal_pilot_spend.sql` | Drops `deals.pilot_spend`; `start_outreach()` loses `p_pilot_spend` |
+| 0041 | `0041_leads_payable_event.sql` | `leads.everflow_payable_event_name`; updates `merge_leads()` |
+| 0042 | `0042_deal_attachments_kind.sql` | `deal_attachments.kind` (tags meeting-transcript uploads vs. general attachments) |
+| 0043 | `0043_drop_leads_payable_event.sql` | Drops `leads.everflow_payable_event_name` (cut from Meetings v1 scope); reverts `merge_leads()` |
+| 0044 | `0044_start_outreach_target_stage.sql` | Adds `p_stage` param to `start_outreach()` (default `'S1'`) so a deal can be created directly at S4 |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number

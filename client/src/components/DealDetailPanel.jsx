@@ -1,17 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { useDeals } from '../state/DealsContext.jsx';
-import {
-  STAGE_LABELS,
-  TOUCH_TYPES,
-  TOUCH_OUTCOMES,
-  nextStageCode,
-} from '../lib/stages.js';
+import { useLeads } from '../state/LeadsContext.jsx';
+import { STAGE_LABELS, nextStageCode } from '../lib/stages.js';
 import { SlideOver } from './Overlay.jsx';
-import { Field, Input, Select, Button, Eyebrow, IconButton } from './ui.jsx';
+import { Field, Input, Button, Eyebrow, IconButton } from './ui.jsx';
 import ContactSelect from './ContactSelect.jsx';
 import DealOverviewFields from './deal/DealOverviewFields.jsx';
-import { fmtDate, toDateInput, todayInput } from '../lib/dates.js';
+import TouchLog from './deal/TouchLog.jsx';
+import CompanyIntel from './company/CompanyIntel.jsx';
+import { fmtDate, toDateInput } from '../lib/dates.js';
 import { gmail } from '../lib/gmail.js';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -19,6 +17,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 // transitions (auto-logged server-side), lost handling, and the touch log.
 export default function DealDetailPanel() {
   const { selectedId, closeDeal, refresh } = useDeals();
+  const { config, verticals, refresh: refreshLeads } = useLeads();
   const navigate = useNavigate();
   const location = useLocation();
   const [deal, setDeal] = useState(null);
@@ -98,8 +97,9 @@ export default function DealDetailPanel() {
               <div className="text-text-primary text-[18px] font-medium truncate">
                 {deal.company_name}
               </div>
-              {/* Company name/vertical are edited from the company profile now
-                  (leads is the single source of truth, see 0039), not here. */}
+              {/* Company name/vertical live on the leads row (single source of
+                  truth, see 0039) — edit them via the Company Intel section
+                  below, or the full company profile (View Company →). */}
               <button
                 type="button"
                 onClick={() => navigate(`/${deal.is_client ? 'clients' : 'leads'}/${deal.lead_id}`)}
@@ -191,6 +191,19 @@ export default function DealDetailPanel() {
               />
             </Field>
           </div>
+
+          {/* Company Intel — score/enrichment/signals/firmographics, the same
+              info as the company profile, collapsed by default since this
+              panel is a fast triage view (see comment above). */}
+          <CompanyIntel
+            leadId={deal.lead_id}
+            config={config}
+            verticals={verticals}
+            onCompanyChanged={() => {
+              load();
+              refreshLeads();
+            }}
+          />
 
           {/* Stage history timeline — entry dates are editable so historical
               accounts can be backfilled with their true timeline. */}
@@ -295,89 +308,3 @@ function Meetings({ dealId }) {
   );
 }
 
-// Touch log with an inline "Add Touch" form.
-function TouchLog({ deal, onChanged }) {
-  const [adding, setAdding] = useState(false);
-  const blank = () => ({ touch_type: 'Email', outcome: 'No Response', notes: '', touch_date: todayInput() });
-  const [form, setForm] = useState(blank);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api.addTouch(deal.id, form);
-      setForm(blank());
-      setAdding(false);
-      onChanged();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="px-5 py-4">
-      <div className="flex items-center justify-between mb-3">
-        <Eyebrow>Touch Log</Eyebrow>
-        <Button variant="ghost" onClick={() => setAdding((a) => !a)}>+ Add Touch</Button>
-      </div>
-
-      {adding && (
-        <form onSubmit={submit} className="border border-hairline p-3 mb-3 space-y-2">
-          <Field label="Date Sent">
-            <Input
-              type="date"
-              value={form.touch_date}
-              onChange={(e) => setForm({ ...form, touch_date: e.target.value })}
-              style={{ colorScheme: 'dark' }}
-              className="font-mono"
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={form.touch_type} onChange={(e) => setForm({ ...form, touch_type: e.target.value })}>
-              {TOUCH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </Select>
-            <Select value={form.outcome} onChange={(e) => setForm({ ...form, outcome: e.target.value })}>
-              {TOUCH_OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
-            </Select>
-          </div>
-          <Input
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder="Notes (optional)"
-          />
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={busy}>Log Touch</Button>
-          </div>
-        </form>
-      )}
-
-      <div className="space-y-2">
-        {deal.touches.length === 0 ? (
-          <div className="text-text-disabled text-[12px]">No touches logged.</div>
-        ) : (
-          deal.touches.map((t) => (
-            <div key={t.id} className="border-b border-hairline pb-2">
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-text-primary">{t.touch_type}</span>
-                  {t.source === 'gmail' && (
-                    <span className="eyebrow text-signal/80 border border-signal/30 px-1">Gmail</span>
-                  )}
-                </span>
-                <span className="text-text-muted">{fmtDate(t.touch_date)}</span>
-              </div>
-              <div className="flex items-center justify-between mt-0.5">
-                <span className="eyebrow text-text-secondary">{t.outcome}</span>
-              </div>
-              {t.notes && <div className="text-[12px] text-text-secondary mt-1">{t.notes}</div>}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}

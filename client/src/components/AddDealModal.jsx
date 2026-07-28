@@ -1,19 +1,27 @@
 import { useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useLeads } from '../state/LeadsContext.jsx';
-import { OWNERS, SOURCES, CHANNELS } from '../lib/stages.js';
+import { OWNERS, SOURCES, CHANNELS, STAGE_LABELS } from '../lib/stages.js';
 import { todayInput } from '../lib/dates.js';
 import { Modal } from './Overlay.jsx';
 import { Field, Input, Select, Button } from './ui.jsx';
 import ContactSelect from './ContactSelect.jsx';
 
-// Create a deal by attaching it to a company — search Directory for an
-// existing company or create one inline, then start outreach (S1) on it.
-// Every deal requires a lead_id now (see 0039_unify_deal_lead_identity), so
-// this replaces the old free-text "brand name" field, which let a rep create
-// a deal with zero link to Directory and silently duplicate a company that
-// already existed there.
-export default function AddDealModal({ onClose, onCreated }) {
+// The company search-or-create + owner/source/channel/contact/date form,
+// shared by Outreach's "+ Add Deal" (stage S1, the default export below) and
+// Meetings' "+ Add Meeting" -> "Log new meeting" (stage S4, see
+// components/meetings/AddMeetingModal.jsx) — same deal-creation flow, just a
+// different target stage. Every deal requires a lead_id now (see
+// 0039_unify_deal_lead_identity), so this replaces the old free-text "brand
+// name" field, which let a rep create a deal with zero link to Directory and
+// silently duplicate a company that already existed there.
+export function DealCreateForm({
+  stage = 'S1',
+  dateLabel = 'Date Entered (S1)',
+  submitLabel = 'Add Deal',
+  onClose,
+  onCreated,
+}) {
   const { leads, verticals, refresh: refreshLeads } = useLeads();
   const [query, setQuery] = useState('');
   const [companyOpen, setCompanyOpen] = useState(false);
@@ -83,6 +91,7 @@ export default function AddDealModal({ onClose, onCreated }) {
         channel: form.channel,
         contact_id: form.contact_id,
         entered_at: form.entered_at,
+        stage,
       });
       onCreated?.(result);
       onClose();
@@ -93,121 +102,135 @@ export default function AddDealModal({ onClose, onCreated }) {
   }
 
   return (
-    <Modal title="Add Deal" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Company">
-          {selectedLead || creatingNew ? (
-            <div className="flex items-center justify-between border border-hairline px-2.5 py-1.5">
-              <span className="text-text-primary text-[13px] truncate">
-                {selectedLead ? selectedLead.company_name : `${query.trim()} (new company)`}
-              </span>
-              <button
-                type="button"
-                onClick={resetCompany}
-                className="text-text-muted hover:text-text-primary text-[12px] shrink-0 ml-2"
-              >
-                Change
-              </button>
-            </div>
-          ) : (
-            <div className="relative">
-              <Input
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setCompanyOpen(true);
-                }}
-                onFocus={() => setCompanyOpen(true)}
-                placeholder="Search companies…"
-                autoFocus
-              />
-              {companyOpen && query.trim() && (
-                <div className="absolute left-0 top-full mt-1 w-full max-h-[240px] overflow-y-auto bg-space border border-hairline z-40">
-                  {matches.map((l) => (
-                    <button
-                      type="button"
-                      key={l.id}
-                      onMouseDown={() => pickLead(l)}
-                      className="w-full text-left px-3 py-2 text-[13px] text-text-primary hover:bg-card-hover"
-                    >
-                      {l.company_name}
-                    </button>
-                  ))}
+    <form onSubmit={submit} className="space-y-4">
+      <Field label="Company">
+        {selectedLead || creatingNew ? (
+          <div className="flex items-center justify-between border border-hairline px-2.5 py-1.5">
+            <span className="text-text-primary text-[13px] truncate">
+              {selectedLead ? selectedLead.company_name : `${query.trim()} (new company)`}
+            </span>
+            <button
+              type="button"
+              onClick={resetCompany}
+              className="text-text-muted hover:text-text-primary text-[12px] shrink-0 ml-2"
+            >
+              Change
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setCompanyOpen(true);
+              }}
+              onFocus={() => setCompanyOpen(true)}
+              placeholder="Search companies…"
+              autoFocus
+            />
+            {companyOpen && query.trim() && (
+              <div className="absolute left-0 top-full mt-1 w-full max-h-[240px] overflow-y-auto bg-space border border-hairline z-40">
+                {matches.map((l) => (
                   <button
                     type="button"
-                    onMouseDown={pickCreateNew}
-                    className="w-full text-left px-3 py-2 text-[13px] text-signal hover:bg-card-hover border-t border-hairline"
+                    key={l.id}
+                    onMouseDown={() => pickLead(l)}
+                    className="w-full text-left px-3 py-2 text-[13px] text-text-primary hover:bg-card-hover"
                   >
-                    + Create “{query.trim()}” as a new company
+                    {l.company_name}
                   </button>
-                </div>
-              )}
-            </div>
-          )}
-        </Field>
-
-        {creatingNew && (
-          <Field label="Vertical">
-            <Select value={newVerticalId} onChange={(e) => setNewVerticalId(e.target.value)}>
-              <option value="">Unsorted</option>
-              {verticals.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </Select>
-          </Field>
-        )}
-
-        <Field label="Point of Contact">
-          <ContactSelect value={form.contact_id} onChange={set('contact_id')} />
-        </Field>
-
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Owner">
-            <Select value={form.owner} onChange={set('owner')}>
-              <option value="">Unassigned</option>
-              {OWNERS.map((o) => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Source">
-            <Select value={form.source} onChange={set('source')}>
-              {SOURCES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Channel">
-            <Select value={form.channel} onChange={set('channel')}>
-              {CHANNELS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <Field label="Date Entered (S1)">
-          <Input
-            type="date"
-            value={form.entered_at}
-            onChange={set('entered_at')}
-            style={{ colorScheme: 'dark' }}
-            className="font-mono"
-          />
-        </Field>
-
-        {error && <div className="text-red-400 text-[12px]">{error}</div>}
-
-        <div className="flex items-center justify-between pt-1">
-          <span className="eyebrow text-text-muted">Starts at S1 · Outreach Sent</span>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Add Deal'}
-            </Button>
+                ))}
+                <button
+                  type="button"
+                  onMouseDown={pickCreateNew}
+                  className="w-full text-left px-3 py-2 text-[13px] text-signal hover:bg-card-hover border-t border-hairline"
+                >
+                  + Create “{query.trim()}” as a new company
+                </button>
+              </div>
+            )}
           </div>
+        )}
+      </Field>
+
+      {creatingNew && (
+        <Field label="Vertical">
+          <Select value={newVerticalId} onChange={(e) => setNewVerticalId(e.target.value)}>
+            <option value="">Unsorted</option>
+            {verticals.map((v) => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      <Field label="Point of Contact">
+        <ContactSelect value={form.contact_id} onChange={set('contact_id')} />
+      </Field>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Owner">
+          <Select value={form.owner} onChange={set('owner')}>
+            <option value="">Unassigned</option>
+            {OWNERS.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Source">
+          <Select value={form.source} onChange={set('source')}>
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Channel">
+          <Select value={form.channel} onChange={set('channel')}>
+            {CHANNELS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <Field label={dateLabel}>
+        <Input
+          type="date"
+          value={form.entered_at}
+          onChange={set('entered_at')}
+          style={{ colorScheme: 'dark' }}
+          className="font-mono"
+        />
+      </Field>
+
+      {error && <div className="text-red-400 text-[12px]">{error}</div>}
+
+      <div className="flex items-center justify-between pt-1">
+        <span className="eyebrow text-text-muted">Starts at {stage} · {STAGE_LABELS[stage]}</span>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={saving}>
+            {saving ? 'Saving…' : submitLabel}
+          </Button>
         </div>
-      </form>
+      </div>
+    </form>
+  );
+}
+
+// Outreach's own "+ Add Deal" button — thin wrapper around DealCreateForm,
+// unchanged behavior (stage S1, same copy as always).
+export default function AddDealModal({ onClose, onCreated }) {
+  return (
+    <Modal title="Add Deal" onClose={onClose}>
+      <DealCreateForm
+        stage="S1"
+        dateLabel="Date Entered (S1)"
+        submitLabel="Add Deal"
+        onClose={onClose}
+        onCreated={onCreated}
+      />
     </Modal>
   );
 }

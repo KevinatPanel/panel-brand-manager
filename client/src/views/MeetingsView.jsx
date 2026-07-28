@@ -2,19 +2,16 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
 import { STAGE_LABELS } from '../lib/stages.js';
-import { fmtDate } from '../lib/dates.js';
 import ViewHeader from '../components/ViewHeader.jsx';
 import Toolbar from '../components/Toolbar.jsx';
-import AddDealModal from '../components/AddDealModal.jsx';
-import { Button, Input, Select, ChannelTag } from '../components/ui.jsx';
-
-const GRID_COLS = '1.4fr 1fr 1.3fr 0.9fr 1.1fr 0.9fr';
+import AddMeetingModal from '../components/meetings/AddMeetingModal.jsx';
+import { Button, Input, Select } from '../components/ui.jsx';
+import MeetingRow, { GRID_COLS } from '../components/meetings/MeetingRow.jsx';
 
 const COLUMNS = [
   { key: 'company_name', label: 'Brand' },
   { key: 'owner', label: 'Owner' },
   { key: 'primary_stakeholder_name', label: 'Primary Contact' },
-  { key: 'channel', label: 'Channel' },
   { key: 'current_stage_entered_at', label: 'Meeting Completed' },
   { key: 'days_in_stage', label: 'Days Since' },
 ];
@@ -25,7 +22,7 @@ const COLUMNS = [
 // dragging. A collapsible Lost section mirrors the Outreach board's Lost
 // column, for deals lost after their meeting.
 export default function MeetingsView() {
-  const { deals, loading, error, openDeal, refresh } = useDeals();
+  const { deals, loading, error, refresh } = useDeals();
   const [adding, setAdding] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
   const [sort, setSort] = useState({ key: 'current_stage_entered_at', dir: 'desc' });
@@ -112,7 +109,7 @@ export default function MeetingsView() {
   return (
     <div>
       <ViewHeader title="Meetings" subtitle={subtitle}>
-        <Button variant="primary" onClick={() => setAdding(true)}>+ Add Deal</Button>
+        <Button variant="primary" onClick={() => setAdding(true)}>+ Add Meeting</Button>
       </ViewHeader>
 
       <Toolbar
@@ -164,7 +161,7 @@ export default function MeetingsView() {
           {sorted.length === 0 ? (
             <div className="px-6 py-10 text-text-disabled text-[13px]">No meetings completed yet.</div>
           ) : (
-            sorted.map((d) => <DealRow key={d.id} deal={d} onClick={() => openDeal(d.id)} />)
+            sorted.map((d) => <MeetingRow key={d.id} deal={d} />)
           )}
 
           {/* Collapsible Lost section — the list-page equivalent of the
@@ -182,9 +179,7 @@ export default function MeetingsView() {
                 <div className="px-6 pb-6 text-text-disabled text-[13px]">No lost deals.</div>
               ) : (
                 <div className="pb-2">
-                  {lost.map((d) => (
-                    <DealRow key={d.id} deal={d} onClick={() => openDeal(d.id)} />
-                  ))}
+                  {lost.map((d) => <MeetingRow key={d.id} deal={d} />)}
                 </div>
               )
             )}
@@ -192,24 +187,7 @@ export default function MeetingsView() {
         </div>
       )}
 
-      {adding && <AddDealModal onClose={() => setAdding(false)} onCreated={refresh} />}
-    </div>
-  );
-}
-
-function DealRow({ deal, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      className="grid gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
-      style={{ gridTemplateColumns: GRID_COLS }}
-    >
-      <div className="text-text-primary text-[13px] truncate">{deal.company_name}</div>
-      <div className="text-text-secondary text-[13px] truncate">{deal.owner ?? '—'}</div>
-      <div className="text-text-secondary text-[13px] truncate">{deal.primary_stakeholder_name ?? '—'}</div>
-      <div><ChannelTag channel={deal.channel} /></div>
-      <div className="text-text-secondary text-[13px]">{fmtDate(deal.current_stage_entered_at)}</div>
-      <div className="font-mono text-text-secondary text-[13px]">{deal.days_in_stage}d</div>
+      {adding && <AddMeetingModal onClose={() => setAdding(false)} onCreated={refresh} />}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { supabase } from './supabaseClient.js';
 import { nowIso, normalizeDateInput, daysBetween, todayInput, toDateInput } from './dates.js';
 import {
   STAGES,
+  SALES_STAGES,
   OWNERS,
   SOURCES,
   CHANNELS,
@@ -173,6 +174,30 @@ async function rescoreAllLeadsInternal() {
   return leads.length;
 }
 
+// Shared upload path for deal_attachments — used by both uploadAttachment
+// (kind: null) and uploadTranscript (kind: 'transcript'), see 0042.
+async function uploadDealFile(dealId, file, uploadedBy, kind = null) {
+  const path = `${dealId}/${crypto.randomUUID()}-${file.name}`;
+  const { error: uploadError } = await supabase.storage.from('deal-attachments').upload(path, file);
+  if (uploadError) throw new Error(uploadError.message);
+  return unwrap(
+    await supabase
+      .from('deal_attachments')
+      .insert({
+        deal_id: dealId,
+        filename: file.name,
+        storage_path: path,
+        file_size: file.size,
+        content_type: file.type || null,
+        uploaded_by: OWNERS.includes(uploadedBy) ? uploadedBy : null,
+        kind,
+        created_at: nowIso(),
+      })
+      .select('*')
+      .single(),
+  );
+}
+
 // ===== Public API ================================================
 
 export const api = {
@@ -238,9 +263,9 @@ export const api = {
     return fetchDealSummary(id);
   },
 
-  setStage: async (id, stage) => {
+  setStage: async (id, stage, when) => {
     if (!STAGE_CODES.includes(stage)) throw new Error('Invalid stage code');
-    await recordStage(id, stage);
+    await recordStage(id, stage, when ? normalizeDateInput(when) : undefined);
     return fetchDealSummary(id);
   },
 
@@ -528,36 +553,35 @@ export const api = {
   // Supabase Storage is the first file-upload feature in this app; the
   // 'deal-attachments' bucket (private, 25MB cap, mime allowlist) is the real
   // server-side enforcement point, since there's no custom backend (0023).
+  // `kind` (0042) tags what an upload is for — null is a general attachment
+  // (AttachmentsSection, the full /deals/:id page), 'transcript' is a Meeting
+  // Gemini transcript (TranscriptsSection, the Meetings page) — same table
+  // and bucket, kept visually separate by filtering on this column.
   listAttachments: async (dealId) => {
     return unwrap(
       await supabase
         .from('deal_attachments')
         .select('*')
         .eq('deal_id', dealId)
+        .is('kind', null)
         .order('created_at', { ascending: false }),
     );
   },
 
-  uploadAttachment: async (dealId, file, uploadedBy) => {
-    const path = `${dealId}/${crypto.randomUUID()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from('deal-attachments').upload(path, file);
-    if (uploadError) throw new Error(uploadError.message);
+  uploadAttachment: async (dealId, file, uploadedBy) => uploadDealFile(dealId, file, uploadedBy, null),
+
+  listTranscripts: async (dealId) => {
     return unwrap(
       await supabase
         .from('deal_attachments')
-        .insert({
-          deal_id: dealId,
-          filename: file.name,
-          storage_path: path,
-          file_size: file.size,
-          content_type: file.type || null,
-          uploaded_by: OWNERS.includes(uploadedBy) ? uploadedBy : null,
-          created_at: nowIso(),
-        })
         .select('*')
-        .single(),
+        .eq('deal_id', dealId)
+        .eq('kind', 'transcript')
+        .order('created_at', { ascending: false }),
     );
   },
+
+  uploadTranscript: async (dealId, file, uploadedBy) => uploadDealFile(dealId, file, uploadedBy, 'transcript'),
 
   getAttachmentDownloadUrl: async (attachment) => {
     const data = unwrap(
@@ -589,7 +613,7 @@ export const api = {
       supabase.from('deal_stakeholders').select('id,name').eq('deal_id', dealId),
       supabase.from('deal_notes').select('*').eq('deal_id', dealId),
       supabase.from('deal_tasks').select('*').eq('deal_id', dealId).not('completed_at', 'is', null),
-      supabase.from('deal_attachments').select('*').eq('deal_id', dealId),
+      supabase.from('deal_attachments').select('*').eq('deal_id', dealId).is('kind', null),
     ]);
 
     const nameByStakeholder = new Map(unwrap(stakeholders).map((s) => [s.id, s.name]));
@@ -924,10 +948,10 @@ export const api = {
     return { ...(await leadSummaryById(id)), score, contacts };
   },
 
-  // extra: optional { owner, source, channel, contact_id, entered_at }
-  // collected by the "+ Add Deal" search-or-create flow — the plain
-  // CompanyProfile "Start Outreach →" button calls this with no extra args
-  // and gets the RPC's defaults (Outbound, today), same as before.
+  // extra: optional { owner, source, channel, contact_id, entered_at, stage }
+  // collected by the "+ Add Deal"/"+ Add Meeting" search-or-create flow — the
+  // plain CompanyProfile "Start Outreach →" button calls this with no extra
+  // args and gets the RPC's defaults (Outbound, today, S1), same as before.
   startLeadOutreach: async (id, extra = {}) => {
     const dealId = unwrap(
       await supabase.rpc('start_outreach', {
@@ -937,6 +961,7 @@ export const api = {
         p_channel: CHANNELS.includes(extra.channel) ? extra.channel : null,
         p_contact_id: extra.contact_id ? Number(extra.contact_id) : null,
         p_entered_at: extra.entered_at ? normalizeDateInput(extra.entered_at) : nowIso(),
+        p_stage: SALES_STAGES.includes(extra.stage) ? extra.stage : 'S1',
       }),
     );
     return { ...(await leadSummaryById(id)), deal_id: dealId };
