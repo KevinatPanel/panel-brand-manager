@@ -1,5 +1,5 @@
 import { OWNERS, SOURCES, CHANNELS } from '../../lib/stages.js';
-import { Field, Select, Eyebrow } from '../ui.jsx';
+import { Field, Input, Select, Eyebrow } from '../ui.jsx';
 
 // Owner/Vertical/Source/Channel/Days-in-Pipeline — shared by the
 // slide-out and the full deal page so both autosave the same way instead of
@@ -34,6 +34,16 @@ export default function DealOverviewFields({ deal, patch }) {
           <option value="">—</option>
           {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
+      </Field>
+      <Field label="Deal Size">
+        <Input
+          type="number"
+          min="0"
+          step="1000"
+          defaultValue={deal.deal_size}
+          onBlur={(e) => patch({ deal_size: e.target.value })}
+          className="font-mono"
+        />
       </Field>
       <div className="self-end">
         <Eyebrow className="mb-1">Days in pipeline</Eyebrow>

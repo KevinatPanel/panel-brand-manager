@@ -11,19 +11,21 @@ import MeetingRow, { GRID_COLS } from '../components/meetings/MeetingRow.jsx';
 const COLUMNS = [
   { key: 'company_name', label: 'Brand' },
   { key: 'owner', label: 'Owner' },
+  { key: 'deal_size', label: 'Deal Size' },
   { key: 'primary_stakeholder_name', label: 'Primary Contact' },
-  { key: 'current_stage_entered_at', label: 'Meeting Completed' },
+  { key: 'current_stage_entered_at', label: 'Meeting Date' },
   { key: 'days_in_stage', label: 'Days Since' },
 ];
 
-// Meetings table: deals that have reached S4 (Meeting Completed) — the sales
-// cycle's terminal/won stage, see lib/stages.js. Deals arrive here from the
-// Outreach board via the "Move to S4" action in DealDetailPanel, not by
-// dragging. A collapsible Lost section mirrors the Outreach board's Lost
-// column, for deals lost after their meeting.
+// Meetings table: deals that have reached S4 (Meetings Finished) — see
+// lib/stages.js. Deals arrive here from the Outreach board via the "Move to
+// S4" action in DealDetailPanel, not by dragging. Collapsible Won/Lost
+// sections mirror the Outreach board's WON/LOST columns, for deals that
+// moved on from their meeting (either outcome).
 export default function MeetingsView() {
   const { deals, loading, error, refresh } = useDeals();
   const [adding, setAdding] = useState(false);
+  const [wonOpen, setWonOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
   const [sort, setSort] = useState({ key: 'current_stage_entered_at', dir: 'desc' });
 
@@ -70,6 +72,10 @@ export default function MeetingsView() {
 
   const meetings = useMemo(
     () => deals.filter((d) => d.current_stage === 'S4' && matchesFilters(d)),
+    [deals, query, owner, channel],
+  );
+  const won = useMemo(
+    () => deals.filter((d) => d.current_stage === 'WON' && matchesFilters(d)),
     [deals, query, owner, channel],
   );
   const lost = useMemo(
@@ -164,9 +170,30 @@ export default function MeetingsView() {
             sorted.map((d) => <MeetingRow key={d.id} deal={d} />)
           )}
 
-          {/* Collapsible Lost section — the list-page equivalent of the
-              Outreach board's collapsible LOST column. */}
+          {/* Collapsible Won/Lost sections — the list-page equivalent of the
+              Outreach board's collapsible WON/LOST columns. Deals land here
+              the moment a Meetings row's stage action moves them on, so they
+              still have a visible destination instead of just disappearing. */}
           <div className="mt-6 border-t border-hairline">
+            <button
+              onClick={() => setWonOpen((o) => !o)}
+              className="flex items-center gap-2 px-6 py-3 text-text-secondary hover:text-text-primary text-[13px] transition-colors"
+            >
+              <span>{wonOpen ? '▾' : '▸'}</span>
+              <span>{STAGE_LABELS.WON} · {won.length}</span>
+            </button>
+            {wonOpen && (
+              won.length === 0 ? (
+                <div className="px-6 pb-6 text-text-disabled text-[13px]">No won deals.</div>
+              ) : (
+                <div className="pb-2">
+                  {won.map((d) => <MeetingRow key={d.id} deal={d} />)}
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="border-t border-hairline">
             <button
               onClick={() => setLostOpen((o) => !o)}
               className="flex items-center gap-2 px-6 py-3 text-text-secondary hover:text-text-primary text-[13px] transition-colors"

@@ -110,7 +110,7 @@ function ConvertDealForm({ onClose, onCreated }) {
       {error && <div className="text-red-400 text-[12px]">{error}</div>}
 
       <div className="flex items-center justify-between pt-1">
-        <span className="eyebrow text-text-muted">Moves straight to S4 · Meeting Completed</span>
+        <span className="eyebrow text-text-muted">Moves straight to S4 · {STAGE_LABELS.S4}</span>
         <div className="flex gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>

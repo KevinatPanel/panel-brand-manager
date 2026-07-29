@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useDeals } from '../state/DealsContext.jsx';
-import { STAGE_LABELS, nextStageCode } from '../lib/stages.js';
-import { Button, Eyebrow, Input } from '../components/ui.jsx';
+import { STAGE_LABELS } from '../lib/stages.js';
+import { Button, Eyebrow } from '../components/ui.jsx';
 import DealOverviewFields from '../components/deal/DealOverviewFields.jsx';
+import StageActions from '../components/deal/StageActions.jsx';
 import StakeholdersSection from '../components/deal/StakeholdersSection.jsx';
 import TasksSection from '../components/deal/TasksSection.jsx';
 import NotesSection from '../components/deal/NotesSection.jsx';
@@ -27,8 +28,6 @@ export default function DealView() {
   const [deal, setDeal] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [showLost, setShowLost] = useState(false);
-  const [lostReason, setLostReason] = useState('');
   const [showDelete, setShowDelete] = useState(false);
 
   const load = useCallback(async () => {
@@ -44,8 +43,6 @@ export default function DealView() {
   useEffect(() => {
     setDeal(null);
     setNotFound(false);
-    setShowLost(false);
-    setLostReason('');
     setShowDelete(false);
     if (Number.isFinite(id)) load();
     else setNotFound(true);
@@ -106,9 +103,6 @@ export default function DealView() {
   if (!deal || dealsLoading) {
     return <div className="px-6 py-10 text-text-secondary text-[13px]">Loading…</div>;
   }
-
-  const next = nextStageCode(deal.current_stage);
-  const isLost = deal.current_stage === 'LOST';
 
   return (
     <div className="flex flex-col h-screen">
@@ -194,51 +188,7 @@ export default function DealView() {
         <div className="w-[420px] shrink-0 h-full overflow-y-auto space-y-8 py-6">
           <section className="px-6">
             <Eyebrow className="mb-3">Stage Actions</Eyebrow>
-            <div className="flex items-center gap-2">
-              {next && !isLost ? (
-                <Button variant="primary" disabled={busy} onClick={() => after(() => api.advanceDeal(id))}>
-                  Move to {next} · {STAGE_LABELS[next]}
-                </Button>
-              ) : (
-                <span className="text-text-secondary text-[12px]">
-                  {isLost ? 'Closed Lost — terminal' : 'Closed Won — S4 reached'}
-                </span>
-              )}
-              {!isLost && (
-                <Button variant="danger" disabled={busy} onClick={() => setShowLost((s) => !s)}>
-                  Mark as Lost
-                </Button>
-              )}
-            </div>
-
-            {showLost && (
-              <div className="border border-red-500/30 p-3 mt-3 space-y-2">
-                <Eyebrow className="text-red-400">Lost reason (required)</Eyebrow>
-                <Input
-                  value={lostReason}
-                  onChange={(e) => setLostReason(e.target.value)}
-                  placeholder="e.g. Budget frozen, chose competitor…"
-                  autoFocus
-                />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setShowLost(false)}>Cancel</Button>
-                  <Button
-                    variant="danger"
-                    disabled={busy || !lostReason.trim()}
-                    onClick={() => after(() => api.markLost(id, lostReason)).then(() => setShowLost(false))}
-                  >
-                    Confirm Lost
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isLost && deal.closed_lost_reason && (
-              <div className="text-[12px] text-text-secondary mt-2">
-                <span className="text-text-muted">Reason: </span>
-                {deal.closed_lost_reason}
-              </div>
-            )}
+            <StageActions key={deal.id} deal={deal} busy={busy} after={after} />
           </section>
 
           <div className="border-t border-hairline pt-4 px-6">

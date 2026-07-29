@@ -35,6 +35,7 @@ export function DealCreateForm({
     channel: 'Email',
     contact_id: '',
     entered_at: todayInput(), // start date — backdate for historical accounts
+    deal_size: 10000,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -92,6 +93,7 @@ export function DealCreateForm({
         contact_id: form.contact_id,
         entered_at: form.entered_at,
         stage,
+        deal_size: form.deal_size,
       });
       onCreated?.(result);
       onClose();
@@ -194,15 +196,20 @@ export function DealCreateForm({
         </Field>
       </div>
 
-      <Field label={dateLabel}>
-        <Input
-          type="date"
-          value={form.entered_at}
-          onChange={set('entered_at')}
-          style={{ colorScheme: 'dark' }}
-          className="font-mono"
-        />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={dateLabel}>
+          <Input
+            type="date"
+            value={form.entered_at}
+            onChange={set('entered_at')}
+            style={{ colorScheme: 'dark' }}
+            className="font-mono"
+          />
+        </Field>
+        <Field label="Deal Size">
+          <Input type="number" min="0" step="1000" value={form.deal_size} onChange={set('deal_size')} className="font-mono" />
+        </Field>
+      </div>
 
       {error && <div className="text-red-400 text-[12px]">{error}</div>}
 

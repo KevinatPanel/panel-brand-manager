@@ -1,17 +1,35 @@
 import { useState } from 'react';
 import { fmtDate } from '../../lib/dates.js';
+import { formatCurrency } from '../../lib/stages.js';
+import { useDeals } from '../../state/DealsContext.jsx';
 import TranscriptsSection from '../deal/TranscriptsSection.jsx';
+import StageActions from '../deal/StageActions.jsx';
+import MeetingOutcomeFields from './MeetingOutcomeFields.jsx';
 
-export const GRID_COLS = '1.4fr 1fr 1.3fr 1.1fr 0.9fr';
+export const GRID_COLS = '1.3fr 0.9fr 0.9fr 1.2fr 1fr 0.9fr';
 
 // One brand's inline collapsible row on the Meetings page. Collapsed, it's
-// the same five columns the flat table always showed. Expanded, v1 is just
-// the meeting transcript upload/list — the place an account manager drops
-// what came out of the call. Mark as Lost/Delete/Stage History/Touch Log
-// stay off this page for now; reach them via the full deal record page or
-// Outreach's slide-out (DealDetailPanel.jsx) instead.
+// the same flat columns the table always showed. Expanded, it's the working
+// view of a finished meeting: stage actions (advance to Closed Won, mark
+// lost, or send back to Meeting Booked for a second meeting), the outcome/
+// notes fields, and the transcript upload. Delete/Stage History/Touch Log
+// still require the full deal record or Outreach's slide-out.
 export default function MeetingRow({ deal }) {
   const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { refresh } = useDeals();
+
+  async function after(fn) {
+    setBusy(true);
+    try {
+      await fn();
+      await refresh();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="border-b border-hairline">
@@ -25,13 +43,16 @@ export default function MeetingRow({ deal }) {
           <span className="truncate">{deal.company_name}</span>
         </div>
         <div className="text-text-secondary text-[13px] truncate">{deal.owner ?? '—'}</div>
+        <div className="font-mono text-text-secondary text-[13px]">{formatCurrency(deal.deal_size)}</div>
         <div className="text-text-secondary text-[13px] truncate">{deal.primary_stakeholder_name ?? '—'}</div>
         <div className="text-text-secondary text-[13px]">{fmtDate(deal.current_stage_entered_at)}</div>
         <div className="font-mono text-text-secondary text-[13px]">{deal.days_in_stage}d</div>
       </div>
 
       {expanded && (
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 space-y-4">
+          <StageActions deal={deal} busy={busy} after={after} />
+          <MeetingOutcomeFields deal={deal} onChanged={refresh} />
           <TranscriptsSection dealId={deal.id} />
         </div>
       )}

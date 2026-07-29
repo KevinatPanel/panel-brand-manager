@@ -2,11 +2,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { useDeals } from '../state/DealsContext.jsx';
 import { useLeads } from '../state/LeadsContext.jsx';
-import { STAGE_LABELS, nextStageCode } from '../lib/stages.js';
+import { STAGE_LABELS } from '../lib/stages.js';
 import { SlideOver } from './Overlay.jsx';
-import { Field, Input, Button, Eyebrow, IconButton } from './ui.jsx';
+import { Field, Button, Eyebrow, IconButton } from './ui.jsx';
 import ContactSelect from './ContactSelect.jsx';
 import DealOverviewFields from './deal/DealOverviewFields.jsx';
+import StageActions from './deal/StageActions.jsx';
 import TouchLog from './deal/TouchLog.jsx';
 import CompanyIntel from './company/CompanyIntel.jsx';
 import { fmtDate, toDateInput } from '../lib/dates.js';
@@ -22,8 +23,6 @@ export default function DealDetailPanel() {
   const location = useLocation();
   const [deal, setDeal] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [showLost, setShowLost] = useState(false);
-  const [lostReason, setLostReason] = useState('');
   const [showDelete, setShowDelete] = useState(false);
 
   const load = useCallback(async () => {
@@ -40,8 +39,6 @@ export default function DealDetailPanel() {
 
   useEffect(() => {
     setDeal(null);
-    setShowLost(false);
-    setLostReason('');
     setShowDelete(false);
     load();
   }, [selectedId, load]);
@@ -78,9 +75,6 @@ export default function DealDetailPanel() {
       setBusy(false);
     }
   }
-
-  const next = deal ? nextStageCode(deal.current_stage) : null;
-  const isLost = deal?.current_stage === 'LOST';
 
   return (
     <SlideOver onClose={closeDeal}>
@@ -129,55 +123,8 @@ export default function DealDetailPanel() {
           </div>
 
           {/* Stage actions */}
-          <div className="px-5 py-4 border-b border-hairline space-y-3">
-            <div className="flex items-center gap-2">
-              {next && !isLost ? (
-                <Button variant="primary" disabled={busy} onClick={() => after(() => api.advanceDeal(deal.id))}>
-                  Move to {next} · {STAGE_LABELS[next]}
-                </Button>
-              ) : (
-                <span className="text-text-secondary text-[12px]">
-                  {isLost ? 'Closed Lost — terminal' : 'Closed Won — S4 reached'}
-                </span>
-              )}
-              {!isLost && (
-                <Button variant="danger" disabled={busy} onClick={() => setShowLost((s) => !s)}>
-                  Mark as Lost
-                </Button>
-              )}
-            </div>
-
-            {/* Lost reason prompt */}
-            {showLost && (
-              <div className="border border-red-500/30 p-3 space-y-2">
-                <Eyebrow className="text-red-400">Lost reason (required)</Eyebrow>
-                <Input
-                  value={lostReason}
-                  onChange={(e) => setLostReason(e.target.value)}
-                  placeholder="e.g. Budget frozen, chose competitor…"
-                  autoFocus
-                />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setShowLost(false)}>Cancel</Button>
-                  <Button
-                    variant="danger"
-                    disabled={busy || !lostReason.trim()}
-                    onClick={() =>
-                      after(() => api.markLost(deal.id, lostReason)).then(() => setShowLost(false))
-                    }
-                  >
-                    Confirm Lost
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isLost && deal.closed_lost_reason && (
-              <div className="text-[12px] text-text-secondary">
-                <span className="text-text-muted">Reason: </span>
-                {deal.closed_lost_reason}
-              </div>
-            )}
+          <div className="px-5 py-4 border-b border-hairline">
+            <StageActions key={deal.id} deal={deal} busy={busy} after={after} />
           </div>
 
           {/* Editable fields */}

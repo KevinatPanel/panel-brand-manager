@@ -1,12 +1,25 @@
 import { useState } from 'react';
-import { ChannelTag } from './ui.jsx';
+import { formatCurrency } from '../lib/stages.js';
+import { Icon } from './ui.jsx';
 
-// A single deal card for the Kanban boards.
-// Shows brand (primary), owner (secondary), days-in-pipeline (mono), and
-// channel. Clicking opens the Deal Detail panel; the card is also
-// draggable so it can be dropped onto another stage column.
-export default function DealCard({ deal, onClick }) {
+// Every card field but the company name (always shown) is toggleable from
+// the Outreach toolbar's Card Fields menu — see CardFieldsMenu.jsx.
+export const CARD_FIELD_OPTIONS = [
+  { key: 'owner', label: 'Account Manager' },
+  { key: 'daysInPipeline', label: 'Days in Pipeline' },
+  { key: 'dealSize', label: 'Deal Size' },
+  { key: 'contact', label: 'Company Contact' },
+];
+export const DEFAULT_CARD_FIELDS = Object.fromEntries(CARD_FIELD_OPTIONS.map((o) => [o.key, true]));
+
+// A single deal card for the Kanban boards. Company name always shows;
+// everything else renders per the `fields` toggle map. Clicking opens the
+// Deal Detail panel; the card is also draggable so it can be dropped onto
+// another stage column.
+export default function DealCard({ deal, fields = DEFAULT_CARD_FIELDS, onClick }) {
   const [dragging, setDragging] = useState(false);
+  const showStats = fields.daysInPipeline || fields.dealSize;
+  const showFooter = showStats || fields.owner;
 
   return (
     <button
@@ -23,22 +36,39 @@ export default function DealCard({ deal, onClick }) {
       }`}
     >
       <div className="min-w-0">
-        <div className="text-text-primary text-[13px] font-medium truncate">
+        <div className="text-text-primary text-[13px] font-semibold truncate">
           {deal.company_name}
         </div>
-        <div className="text-text-secondary text-[12px] mt-0.5 truncate">
-          {deal.owner ?? '—'}
-          {deal.primary_stakeholder_name ? ` · ${deal.primary_stakeholder_name}` : ''}
-        </div>
+        {fields.contact && deal.primary_stakeholder_name && (
+          <div className="text-text-secondary text-[12px] mt-0.5 truncate">
+            {deal.primary_stakeholder_name}
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center justify-between mt-3">
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[12px] text-text-secondary">{deal.days_in_pipeline}d</span>
-          <span className="eyebrow text-text-muted">in pipeline</span>
+      {showFooter && (
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-hairline">
+          <div className="flex items-center gap-3">
+            {fields.daysInPipeline && (
+              <span className="flex items-center gap-1 font-mono text-[12px] text-text-secondary">
+                <Icon name="clock" className="w-3 h-3 text-text-muted" />
+                {deal.days_in_pipeline}d
+              </span>
+            )}
+            {fields.dealSize && (
+              <span className="flex items-center gap-1 font-mono text-[12px] text-text-secondary">
+                <Icon name="value" className="w-3 h-3 text-text-muted" />
+                {formatCurrency(deal.deal_size)}
+              </span>
+            )}
+          </div>
+          {fields.owner && (
+            <span className="eyebrow text-text-secondary border border-hairline px-1.5 py-0.5">
+              {deal.owner ?? '—'}
+            </span>
+          )}
         </div>
-        <ChannelTag channel={deal.channel} />
-      </div>
+      )}
     </button>
   );
 }

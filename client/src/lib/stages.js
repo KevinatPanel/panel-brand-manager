@@ -8,9 +8,10 @@ export const STAGES = [
   { code: 'P1', label: 'Target', group: 'prospecting' },
   { code: 'P2', label: 'Intent Flagged', group: 'prospecting' },
   { code: 'S1', label: 'Outreach Sent', group: 'sales' },
-  { code: 'S2', label: 'Conversation Open', group: 'sales' },
+  { code: 'S2', label: 'Client Replied', group: 'sales' },
   { code: 'S3', label: 'Meeting Booked', group: 'sales' },
-  { code: 'S4', label: 'Meeting Completed', group: 'sales' },
+  { code: 'S4', label: 'Meetings Finished', group: 'sales' },
+  { code: 'WON', label: 'Closed - Won', group: 'terminal' },
   { code: 'LOST', label: 'Closed Lost', group: 'terminal' },
 ];
 
@@ -39,12 +40,21 @@ export const SALES_STAGES = ['S1', 'S2', 'S3', 'S4'];
 export const PROSPECTING_STAGES = ['P1', 'P2'];
 
 // The sales cycle split across two pages: active outreach (S1-S3, Kanban)
-// and completed meetings (S4, table). See OutreachView/MeetingsView.
+// and completed meetings (S4, table). See OutreachView/MeetingsView. Kept
+// as S1-S3 (not the full funnel) since this also drives "pre-meeting"
+// semantics elsewhere — the Convert-to-meeting picker and the Outreach
+// header's active-deal count — that shouldn't shift just because the board
+// now renders more columns.
 export const OUTREACH_STAGES = ['S1', 'S2', 'S3'];
 
-// Linear forward path (excludes LOST). S4 is the terminal stage — a deal is
-// won once it reaches S4.
-export const FORWARD_PATH = [...PROSPECTING_STAGES, ...SALES_STAGES];
+// Every stage shown as a column on the Outreach Kanban board, in display
+// order — the full sales funnel including both terminal outcomes. Also
+// drives the ordering on the Stage Weights admin page.
+export const FUNNEL_STAGES = ['S1', 'S2', 'S3', 'S4', 'WON', 'LOST'];
+
+// Linear forward path (excludes LOST, a branch rather than a forward step).
+// WON is the true terminal "won" stage, reached via nextStageCode('S4').
+export const FORWARD_PATH = [...PROSPECTING_STAGES, ...SALES_STAGES, 'WON'];
 
 // Next stage code on the forward path, or null at the end / for LOST.
 export function nextStageCode(code) {
@@ -75,6 +85,10 @@ export const TOUCH_OUTCOMES = ['No Response', 'Responded', 'Booked', 'Completed'
 // Stakeholder roles on a deal (client-validated only, no DB check constraint,
 // same convention as current_stage/touch_type).
 export const STAKEHOLDER_ROLES = ['Champion', 'Economic Buyer', 'Blocker', 'Influencer', 'Other'];
+
+// How a finished meeting went (client-validated only, same convention as
+// STAKEHOLDER_ROLES/TOUCH_OUTCOMES — no DB check constraint).
+export const MEETING_OUTCOMES = ['Went Well', 'Needs Follow-up', 'Not a Fit', 'No Show'];
 
 // A task is overdue once it's still open and its due date has passed.
 // Never stored — always computed at read/render time.

@@ -20,6 +20,7 @@ import {
   TOUCH_TYPES,
   TOUCH_OUTCOMES,
   STAKEHOLDER_ROLES,
+  MEETING_OUTCOMES,
   nextStageCode,
   AD_STAGES,
   PLATFORMS,
@@ -250,6 +251,14 @@ export const api = {
     if (body.fast_track !== undefined) patch.fast_track = !!body.fast_track;
     if (body.contact_id !== undefined) patch.contact_id = body.contact_id ? Number(body.contact_id) : null;
     if (body.intent_notes !== undefined) patch.intent_notes = body.intent_notes;
+    if (body.deal_size !== undefined) {
+      const n = Number(body.deal_size);
+      patch.deal_size = Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+    }
+    if (body.meeting_outcome !== undefined) {
+      patch.meeting_outcome = MEETING_OUTCOMES.includes(body.meeting_outcome) ? body.meeting_outcome : null;
+    }
+    if (body.meeting_notes !== undefined) patch.meeting_notes = body.meeting_notes;
     unwrap(await supabase.from('deals').update(patch).eq('id', id));
     return fetchDealSummary(id);
   },
@@ -962,6 +971,9 @@ export const api = {
         p_contact_id: extra.contact_id ? Number(extra.contact_id) : null,
         p_entered_at: extra.entered_at ? normalizeDateInput(extra.entered_at) : nowIso(),
         p_stage: SALES_STAGES.includes(extra.stage) ? extra.stage : 'S1',
+        p_deal_size: Number.isFinite(Number(extra.deal_size)) && Number(extra.deal_size) >= 0
+          ? Math.round(Number(extra.deal_size))
+          : 10000,
       }),
     );
     return { ...(await leadSummaryById(id)), deal_id: dealId };
@@ -1274,6 +1286,25 @@ export const api = {
 
   rescoreAllLeads: async () => ({ rescored: await rescoreAllLeadsInternal() }),
 
+  // ---- Stage weights ----
+  // Editable multiplier applied to deal_size for the Outreach board's
+  // weighted-pipeline-value display (see StageWeightsView.jsx). No .order()
+  // here — stage_code's alphabetical order isn't funnel order; callers
+  // reorder client-side using FUNNEL_STAGES.
+  listStageWeights: async () => unwrap(await supabase.from('stage_weights').select('*')),
+
+  updateStageWeight: async (stageCode, weight) => {
+    const n = Number(weight);
+    const clamped = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+    unwrap(
+      await supabase
+        .from('stage_weights')
+        .update({ weight: clamped, updated_at: nowIso() })
+        .eq('stage_code', stageCode),
+    );
+    return api.listStageWeights();
+  },
+
   // ---- Ad tracker (per-client creator-ad pipeline) ----
   // current_stage is trigger-synced from ad_item_stage_history inserts (see
   // migration 0030); ad_item_summaries exposes current_stage_entered_at +
@@ -1508,6 +1539,46 @@ export const api = {
         .select('lead_id, revenue')
         .eq('month', month)
         .in('lead_id', leadIds),
+    );
+  },
+
+  // ---- Offers (Everflow) ----
+  // Some advertisers run several simultaneous Everflow offers under one
+  // account (e.g. tiered payouts T1/T2/T3/T4 for the same property).
+  // Offers aren't created here — they're auto-discovered by everflow-sync
+  // from Everflow's own per-offer report breakdown and upserted into
+  // client_offers; this just reads what that sync already wrote, same as
+  // listQualityActuals does for quality events.
+  listClientOffers: async (leadId) => {
+    return unwrap(
+      await supabase
+        .from('client_offers')
+        .select('id, lead_id, everflow_offer_id, everflow_offer_name, display_name')
+        .eq('lead_id', leadId)
+        .order('everflow_offer_name', { ascending: true }),
+    );
+  },
+
+  // A rep's own rename for one offer (e.g. Everflow's own label to "T1") —
+  // layered over everflow_offer_name, never overwritten by future syncs.
+  renameClientOffer: async (offerId, displayName) => {
+    unwrap(
+      await supabase
+        .from('client_offers')
+        .update({ display_name: displayName ? String(displayName).trim() : null, updated_at: nowIso() })
+        .eq('id', offerId),
+    );
+  },
+
+  // Excludes everflow_raw, same as listSpendActuals — never read by the UI,
+  // kept queryable via SQL for debugging.
+  listOfferSpendActuals: async (offerId) => {
+    return unwrap(
+      await supabase
+        .from('client_offer_spend_actuals')
+        .select('id, offer_id, month, revenue, payout, synced_at')
+        .eq('offer_id', offerId)
+        .order('month', { ascending: false }),
     );
   },
 };
