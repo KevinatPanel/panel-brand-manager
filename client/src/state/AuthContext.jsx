@@ -45,9 +45,15 @@ export function AuthProvider({ children }) {
 
   const signOut = () => supabase.auth.signOut();
 
+  // Stored in Supabase auth's own user_metadata — no separate profiles table
+  // exists in this app. Supabase fires a USER_UPDATED auth-state-change event
+  // on success, which the listener above picks up, so no manual refetch here.
+  const updateProfile = ({ firstName, lastName }) =>
+    supabase.auth.updateUser({ data: { first_name: firstName.trim(), last_name: lastName.trim() } });
+
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, loading, signInWithEmail, devSignIn, signOut }}
+      value={{ session, user: session?.user ?? null, loading, signInWithEmail, devSignIn, signOut, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

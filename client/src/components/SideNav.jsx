@@ -4,7 +4,7 @@ import { Eyebrow } from './ui.jsx';
 import { useAuth } from '../state/AuthContext.jsx';
 import { useInbox } from '../state/InboxContext.jsx';
 import { useLeads } from '../state/LeadsContext.jsx';
-import { initialsFromEmail } from '../lib/account.js';
+import { accountName, accountInitials } from '../lib/account.js';
 import GlobalSearch from './GlobalSearch.jsx';
 import AddLeadModal from './AddLeadModal.jsx';
 
@@ -202,11 +202,11 @@ export default function SideNav() {
           }
         >
           <div className="h-7 w-7 shrink-0 flex items-center justify-center bg-space border border-hairline text-text-primary text-[11px] font-medium">
-            {initialsFromEmail(user?.email)}
+            {accountInitials(user)}
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-text-primary text-[12px] truncate">
-              {user?.email ?? 'Account'}
+              {accountName(user) ?? user?.email ?? 'Account'}
             </div>
             <div className="eyebrow text-text-muted">Settings</div>
           </div>

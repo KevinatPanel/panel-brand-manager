@@ -63,7 +63,13 @@ export function nextStageCode(code) {
   return FORWARD_PATH[idx + 1];
 }
 
-export const OWNERS = ['Tom', 'Raven', 'Andrew', 'Kevin'];
+// 'Dev' is only added in dev builds so the local-dev bypass account
+// (dev@panel.local) resolves to a real owner — notes, mentions, and owner
+// dropdowns all work when testing locally — without polluting the owner
+// list real users pick from in production.
+export const OWNERS = import.meta.env.DEV
+  ? ['Tom', 'Raven', 'Andrew', 'Kevin', 'Dev']
+  : ['Tom', 'Raven', 'Andrew', 'Kevin'];
 
 // Resolve a signed-in user's email to an OWNERS name, e.g.
 // tom@panelforcreators.com -> 'Tom' (matched on the local part,
