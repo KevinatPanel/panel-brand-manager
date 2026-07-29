@@ -69,6 +69,14 @@ export interface AdvertiserQualityEvent {
   raw: unknown;
 }
 
+export interface AdvertiserOffer {
+  offerId: string;
+  offerName: string | null;
+  revenue: number | null;
+  payout: number | null;
+  raw: unknown;
+}
+
 // Everflow's UTC timezone_id (confirmed via their metadata docs). timezone_id
 // is a REQUIRED field on this endpoint despite some docs pages implying it
 // falls back to a network default when omitted — omitting it produced an
@@ -177,4 +185,60 @@ export async function fetchAdvertiserQualityEvent(
     billedEventCount,
     raw: row,
   };
+}
+
+// Per-offer revenue/payout breakdown for one advertiser over [from, to] —
+// some advertisers run several simultaneous Everflow offers under one
+// account (e.g. tiered payouts T1/T2/T3/T4 for the same property). Grouping
+// by the "offer" column breaks the same entity/table report out one row per
+// offer, mirroring how fetchAdvertiserQualityEvent breaks it out by
+// "advertiser_event_name" — same endpoint, same advertiser-only filter, just
+// a different grouping column.
+//
+// UNLIKE its neighbors above, this has NOT been confirmed against a live
+// Everflow response — the "offer" column name and each row's
+// column_type/id/label shape are inferred from Everflow's reporting-API
+// pattern (documented at developers.everflow.io under
+// network/reporting/aggregated_data) rather than verified with a real
+// advertiser/offer id. Sanity-check the first live sync's raw response
+// (client_offer_spend_actuals.everflow_raw) against what this expects before
+// trusting it unattended.
+//
+// Returns [] (not null) if the advertiser has no offer rows in range — an
+// empty result set here just means nothing to sync, not an error, and lets
+// callers iterate without a null check.
+export async function fetchAdvertiserOfferBreakdown(
+  advertiserId: string,
+  from: string,
+  to: string,
+): Promise<AdvertiserOffer[]> {
+  const data = await call("/networks/reporting/entity/table", {
+    from,
+    to,
+    timezone_id: UTC_TIMEZONE_ID,
+    currency_id: "USD",
+    columns: [{ column: "advertiser" }, { column: "offer" }],
+    query: {
+      filters: [{ resource_type: "advertiser", filter_id_value: String(advertiserId) }],
+    },
+  });
+
+  const rows: any[] = Array.isArray(data?.table) ? data.table : [];
+  const offers: AdvertiserOffer[] = [];
+  for (const row of rows) {
+    const col = row?.columns?.find((c: any) => c?.column_type === "offer");
+    // Skip the no-offer/"N/A" bucket, same way the quality-event lookup
+    // skips its own base bucket — nothing meaningful to track per-offer there.
+    if (!col?.id || col.id === "0" || col.label === "N/A") continue;
+
+    const reporting = row.reporting ?? {};
+    offers.push({
+      offerId: String(col.id),
+      offerName: typeof col.label === "string" ? col.label : null,
+      revenue: typeof reporting.revenue === "number" ? Math.round(reporting.revenue) : null,
+      payout: typeof reporting.payout === "number" ? Math.round(reporting.payout) : null,
+      raw: row,
+    });
+  }
+  return offers;
 }

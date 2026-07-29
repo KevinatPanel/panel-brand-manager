@@ -24,21 +24,35 @@
 // hiccup) is absorbed and reported alongside — it never fails the spend sync,
 // which is the older, primary feature.
 //
+// Per-offer sync (some advertisers run several simultaneous Everflow offers
+// under one account, e.g. tiered payouts T1/T2/T3/T4 for the same property)
+// also rides along on every path above, unconditionally — offers aren't
+// configured by a rep like the quality event name is; they're auto-discovered
+// from Everflow's own per-offer report breakdown (see
+// fetchAdvertiserOfferBreakdown) and upserted into client_offers /
+// client_offer_spend_actuals. Same "never fails the primary spend sync" rule
+// as the quality sync.
+//
 // Response contract (so the client stays simple): handled outcomes return
 // HTTP 200 with { ok, ... }; only auth/bad-input/unexpected use non-2xx.
 //   - single month, matched:    { ok:true, matched:true, revenue, payout, synced_at,
-//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason? }
+//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason?, offersSynced }
 //   - single month, no match:   { ok:true, matched:false, reason,
-//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason? }
+//                                  qualityMatched?, eventCount?, eventRevenue?, qualityReason?, offersSynced }
 //     (qualityMatched/eventCount/eventRevenue/qualityReason are only present
-//     when the lead has a quality event name configured)
+//     when the lead has a quality event name configured; offersSynced always is)
 //   - history walk-back:        { ok:true, historySync:true, synced: N, checked: N,
-//                                  stopped: 'no_data'|'cap'|'rate_limited', qualitySynced?: N }
-//   - batch:      { ok:true, synced: N, skipped: N, qualitySynced: N, qualitySkipped: N }
+//                                  stopped: 'no_data'|'cap'|'rate_limited', offersSynced: N, qualitySynced?: N }
+//   - batch:      { ok:true, synced: N, skipped: N, qualitySynced: N, qualitySkipped: N, offersSynced: N }
 //   - everflow err: { ok:false, error:'rate_limited'|'unauthorized'|'everflow_error', message }
 import { serviceClient, userFromRequest } from "../_shared/supabase.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { EverflowError, fetchAdvertiserQualityEvent, fetchAdvertiserRevenue } from "../_shared/everflow.ts";
+import {
+  EverflowError,
+  fetchAdvertiserOfferBreakdown,
+  fetchAdvertiserQualityEvent,
+  fetchAdvertiserRevenue,
+} from "../_shared/everflow.ts";
 
 // Decode (without verifying — the gateway already verified the signature when
 // verify_jwt=true) a JWT payload to read the role claim. Duplicated from
@@ -261,6 +275,59 @@ async function syncQualityIfConfigured(
   }
 }
 
+// Discovers + upserts per-offer revenue for one advertiser's one month.
+// Offers aren't configured by a rep — they're auto-discovered from
+// Everflow's own per-offer report breakdown (see
+// fetchAdvertiserOfferBreakdown) — so this always runs, unlike the quality
+// sync which is gated on a configured event name. Absorbs errors the same
+// way syncQualityIfConfigured does: an offer-sync failure must never fail
+// the primary spend sync. Returns the number of offer-months upserted.
+async function syncOfferBreakdown(
+  db: SupabaseClient,
+  leadId: number,
+  advertiserId: string,
+  month: string,
+): Promise<number> {
+  try {
+    const { start, end } = monthRange(month);
+    const offers = await fetchAdvertiserOfferBreakdown(advertiserId, start, end);
+    const now = new Date().toISOString();
+    let synced = 0;
+    for (const offer of offers) {
+      const { data: offerRow, error: offerErr } = await db
+        .from("client_offers")
+        .upsert(
+          {
+            lead_id: leadId,
+            everflow_offer_id: offer.offerId,
+            everflow_offer_name: offer.offerName,
+            updated_at: now,
+          },
+          { onConflict: "lead_id,everflow_offer_id" },
+        )
+        .select("id")
+        .single();
+      if (offerErr || !offerRow) continue;
+
+      const { error: actualErr } = await db.from("client_offer_spend_actuals").upsert(
+        {
+          offer_id: offerRow.id,
+          month,
+          revenue: offer.revenue,
+          payout: offer.payout,
+          everflow_raw: offer.raw,
+          synced_at: now,
+        },
+        { onConflict: "offer_id,month" },
+      );
+      if (!actualErr) synced++;
+    }
+    return synced;
+  } catch {
+    return 0;
+  }
+}
+
 async function lookupAdvertiser(
   db: SupabaseClient,
   leadId: number,
@@ -295,6 +362,7 @@ async function syncOneResponse(db: SupabaseClient, leadId: number, month: string
 
   const result = await syncMonth(db, leadId, lookup.advertiserId, month);
   const quality = await syncQualityIfConfigured(db, leadId, lookup, month);
+  const offersSynced = await syncOfferBreakdown(db, leadId, lookup.advertiserId, month);
 
   const body: Record<string, unknown> = result.matched
     ? { ok: true, matched: true, revenue: result.revenue, payout: result.payout, synced_at: result.synced_at }
@@ -308,6 +376,8 @@ async function syncOneResponse(db: SupabaseClient, leadId: number, month: string
         : { qualityMatched: false, qualityReason: quality.reason },
     );
   }
+
+  body.offersSynced = offersSynced;
 
   return json(body);
 }
@@ -329,6 +399,7 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
   let month = monthRange().start;
   let synced = 0;
   let qualitySynced = 0;
+  let offersSynced = 0;
   let checked = 0;
   let emptyStreak = 0;
   let stopped: "no_data" | "cap" | "rate_limited" = "cap";
@@ -358,6 +429,7 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
 
     const quality = await syncQualityIfConfigured(db, leadId, lookup, month);
     if (quality?.matched) qualitySynced++;
+    offersSynced += await syncOfferBreakdown(db, leadId, lookup.advertiserId, month);
 
     if (result.matched) {
       synced++;
@@ -381,6 +453,7 @@ async function syncHistory(db: SupabaseClient, leadId: number): Promise<Response
     synced,
     checked,
     stopped,
+    offersSynced,
     ...(lookup.qualityEventName ? { qualitySynced } : {}),
   });
 }
@@ -399,6 +472,7 @@ async function syncAll(db: SupabaseClient): Promise<Response> {
   let skipped = 0;
   let qualitySynced = 0;
   let qualitySkipped = 0;
+  let offersSynced = 0;
   for (const lead of leads ?? []) {
     for (const month of [currentMonth, prevMonth]) {
       try {
@@ -410,10 +484,11 @@ async function syncAll(db: SupabaseClient): Promise<Response> {
           if (body.qualityMatched) qualitySynced++;
           else qualitySkipped++;
         }
+        if (typeof body.offersSynced === "number") offersSynced += body.offersSynced;
       } catch {
         skipped++;
       }
     }
   }
-  return json({ ok: true, synced, skipped, qualitySynced, qualitySkipped });
+  return json({ ok: true, synced, skipped, qualitySynced, qualitySkipped, offersSynced });
 }

@@ -9,6 +9,7 @@ import SearchSelect from './SearchSelect.jsx';
 import AdTrackerSection from './AdTrackerSection.jsx';
 import SpendGoalWidget from './SpendGoalWidget.jsx';
 import QualityMetricWidget from './QualityMetricWidget.jsx';
+import OffersWidget from './OffersWidget.jsx';
 import ScoreBadge from './company/ScoreBadge.jsx';
 import EnrichmentSection from './company/EnrichmentSection.jsx';
 import SignalsSection from './company/SignalsSection.jsx';
@@ -127,9 +128,20 @@ export default function CompanyProfile({ leadId, onDeleted }) {
         <div className="w-full max-w-[720px]">
           {/* Header */}
           <div className="px-5 pt-5 pb-4 border-b border-hairline">
-            <div className="text-text-primary text-[20px] font-semibold truncate">
-              {lead.company_name}
-            </div>
+            <input
+              key={lead.id}
+              defaultValue={lead.company_name ?? ''}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next && next !== lead.company_name) {
+                  after(() => api.updateLead(lead.id, { company_name: next }));
+                } else {
+                  e.target.value = lead.company_name ?? '';
+                }
+              }}
+              className="bg-transparent text-text-primary text-[20px] font-semibold outline-none w-full truncate"
+              placeholder="Company name"
+            />
             <ScoreBadge score={lead.score} updatedAt={lead.score_updated_at} />
 
             <FirmographicsFields lead={lead} verticals={verticals} after={after}>
@@ -140,119 +152,130 @@ export default function CompanyProfile({ leadId, onDeleted }) {
             </FirmographicsFields>
           </div>
 
-          {/* Enrichment (Apollo) */}
-          <EnrichmentSection lead={lead} busy={busy} after={after} />
+          {/* Enrichment/Signals/pipeline actions/merge/remove are all
+              prospect-side concepts (Directory) — not shown once a company
+              is a client. */}
+          {!lead.is_client && (
+            <>
+              {/* Enrichment (Apollo) */}
+              <EnrichmentSection lead={lead} busy={busy} after={after} />
 
-          {/* Signals */}
-          <SignalsSection lead={lead} config={config} after={after} />
+              {/* Signals */}
+              <SignalsSection lead={lead} config={config} after={after} />
 
-          {/* Footer — client flag, Start Outreach + remove lead */}
-          <div className="px-5 py-4 border-t border-hairline space-y-3">
-            <Button
-              variant={lead.is_client ? 'ghost' : 'secondary'}
-              className="w-full"
-              disabled={busy}
-              onClick={() => after(() => api.updateLead(lead.id, { is_client: !lead.is_client }))}
-            >
-              {lead.is_client ? 'Remove from clients' : '★ Mark as client'}
-            </Button>
-
-            {lead.in_pipeline ? (
-              <div className="flex items-center justify-between">
-                <span className="eyebrow text-signal flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-signal inline-block" />
-                  In Pipeline
-                </span>
+              {/* Footer — client flag, Start Outreach + remove lead */}
+              <div className="px-5 py-4 border-t border-hairline space-y-3">
                 <Button
-                  variant="ghost"
-                  onClick={() => {
-                    const deal = deals.find((d) => d.id === lead.deal_id);
-                    const base = deal?.current_stage === 'S4' ? '/meetings' : '/outreach';
-                    navigate(lead.deal_id ? `${base}/${lead.deal_id}` : base);
-                  }}
+                  variant="secondary"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => after(() => api.updateLead(lead.id, { is_client: true }))}
                 >
-                  View in Pipeline →
+                  ★ Mark as client
                 </Button>
-              </div>
-            ) : (
-              <Button
-                variant="primary"
-                className="w-full"
-                disabled={busy}
-                onClick={() => after(() => api.startLeadOutreach(lead.id))}
-              >
-                Start Outreach →
-              </Button>
-            )}
 
-            {showMerge ? (
-              <div className="border border-hairline p-3 space-y-2">
-                <div className="text-text-secondary text-[12px]">
-                  Merge <span className="text-text-primary">{lead.company_name}</span> into another
-                  company — its contacts, ad items, signals, and spend history move over, then this
-                  record is deleted. This cannot be undone.
-                </div>
-                <SearchSelect
-                  value={mergeTargetId}
-                  onChange={setMergeTargetId}
-                  options={mergeCompanies.map((c) => ({ value: c.id, label: c.company_name }))}
-                  placeholder="Select a company…"
-                />
-                {mergeError && <div className="text-red-400 text-[12px]">{mergeError}</div>}
-                <div className="flex justify-end gap-2">
+                {lead.in_pipeline ? (
+                  <div className="flex items-center justify-between">
+                    <span className="eyebrow text-signal flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-signal inline-block" />
+                      In Pipeline
+                    </span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        const deal = deals.find((d) => d.id === lead.deal_id);
+                        const base = deal?.current_stage === 'S4' ? '/meetings' : '/outreach';
+                        navigate(lead.deal_id ? `${base}/${lead.deal_id}` : base);
+                      }}
+                    >
+                      View in Pipeline →
+                    </Button>
+                  </div>
+                ) : (
                   <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setShowMerge(false);
-                      setMergeTargetId('');
-                      setMergeError(null);
-                    }}
+                    variant="primary"
+                    className="w-full"
+                    disabled={busy}
+                    onClick={() => after(() => api.startLeadOutreach(lead.id))}
                   >
-                    Cancel
+                    Start Outreach →
                   </Button>
-                  <Button variant="danger" disabled={busy || !mergeTargetId} onClick={mergeInto}>
-                    Merge
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowMerge(true)}
-                className="text-text-muted hover:text-text-primary text-[12px] transition-colors"
-              >
-                Merge into another company
-              </button>
-            )}
+                )}
 
-            {showDelete ? (
-              <div className="border border-red-500/30 p-3 space-y-2">
-                <div className="text-text-secondary text-[12px]">
-                  Permanently delete <span className="text-text-primary">{lead.company_name}</span>,
-                  its signals and contacts? This cannot be undone.
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
-                  <Button variant="danger" disabled={busy} onClick={deleteLead}>Remove Lead</Button>
-                </div>
+                {showMerge ? (
+                  <div className="border border-hairline p-3 space-y-2">
+                    <div className="text-text-secondary text-[12px]">
+                      Merge <span className="text-text-primary">{lead.company_name}</span> into another
+                      company — its contacts, ad items, signals, and spend history move over, then this
+                      record is deleted. This cannot be undone.
+                    </div>
+                    <SearchSelect
+                      value={mergeTargetId}
+                      onChange={setMergeTargetId}
+                      options={mergeCompanies.map((c) => ({ value: c.id, label: c.company_name }))}
+                      placeholder="Select a company…"
+                    />
+                    {mergeError && <div className="text-red-400 text-[12px]">{mergeError}</div>}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowMerge(false);
+                          setMergeTargetId('');
+                          setMergeError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button variant="danger" disabled={busy || !mergeTargetId} onClick={mergeInto}>
+                        Merge
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowMerge(true)}
+                    className="text-text-muted hover:text-text-primary text-[12px] transition-colors"
+                  >
+                    Merge into another company
+                  </button>
+                )}
+
+                {showDelete ? (
+                  <div className="border border-red-500/30 p-3 space-y-2">
+                    <div className="text-text-secondary text-[12px]">
+                      Permanently delete <span className="text-text-primary">{lead.company_name}</span>,
+                      its signals and contacts? This cannot be undone.
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
+                      <Button variant="danger" disabled={busy} onClick={deleteLead}>Remove Lead</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowDelete(true)}
+                    className="text-text-muted hover:text-red-400 text-[12px] transition-colors"
+                  >
+                    Remove this lead
+                  </button>
+                )}
               </div>
-            ) : (
-              <button
-                onClick={() => setShowDelete(true)}
-                className="text-text-muted hover:text-red-400 text-[12px] transition-colors"
-              >
-                Remove this lead
-              </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Right sidebar — Spend vs. Goal, Contacts, Ad Tracker, Activity */}
+      {/* Right sidebar — Spend vs. Goal, Contacts, Ad Tracker, Activity.
+          Spend vs. Goal and Ad Tracker are client-only concepts (nothing to
+          track until there's a live ad deal) — hidden for Directory
+          prospects, same as the Enrichment/Signals/pipeline gating above. */}
       <div className="w-[420px] shrink-0 h-full overflow-y-auto">
-        <SpendGoalWidget lead={lead} />
+        {lead.is_client && <SpendGoalWidget lead={lead} />}
         <QualityMetricWidget lead={lead} />
+        <OffersWidget lead={lead} />
         <ContactsSection lead={lead} busy={busy} after={after} />
-        <AdTrackerSection leadId={lead.id} />
+        {lead.is_client && <AdTrackerSection leadId={lead.id} />}
         <ActivitySection leadId={lead.id} />
       </div>
     </div>
