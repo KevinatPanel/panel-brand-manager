@@ -50,10 +50,12 @@ export default function MeetingRow({ deal }) {
       </div>
 
       {expanded && (
-        <div className="px-6 pb-6 space-y-4">
-          <StageActions deal={deal} busy={busy} after={after} />
+        <div className="px-6 pt-6 pb-6 grid grid-cols-2 gap-6">
           <MeetingOutcomeFields deal={deal} onChanged={refresh} />
-          <TranscriptsSection dealId={deal.id} />
+          <div className="space-y-4">
+            <TranscriptsSection dealId={deal.id} />
+            <StageActions deal={deal} busy={busy} after={after} />
+          </div>
         </div>
       )}
     </div>

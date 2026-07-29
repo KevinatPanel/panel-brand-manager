@@ -22,7 +22,16 @@ export default function MeetingOutcomeFields({ deal, onChanged }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-3">
+      <Field label="Meeting Notes">
+        <TextArea
+          rows={2}
+          defaultValue={deal.meeting_notes ?? ''}
+          disabled={saving}
+          onBlur={(e) => patch({ meeting_notes: e.target.value })}
+          placeholder="What came out of the call…"
+        />
+      </Field>
       <Field label="Meeting Outcome">
         <Select
           value={deal.meeting_outcome ?? ''}
@@ -34,15 +43,6 @@ export default function MeetingOutcomeFields({ deal, onChanged }) {
             <option key={o} value={o}>{o}</option>
           ))}
         </Select>
-      </Field>
-      <Field label="Meeting Notes">
-        <TextArea
-          rows={2}
-          defaultValue={deal.meeting_notes ?? ''}
-          disabled={saving}
-          onBlur={(e) => patch({ meeting_notes: e.target.value })}
-          placeholder="What came out of the call…"
-        />
       </Field>
     </div>
   );
