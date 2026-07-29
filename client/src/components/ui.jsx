@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { useState } from 'react';
+import { formatCurrency } from '../lib/stages.js';
 
 export function Eyebrow({ children, className = '' }) {
   return <div className={`eyebrow text-text-muted ${className}`}>{children}</div>;
@@ -36,6 +37,38 @@ export function Select({ children, ...props }) {
     <select {...props} className={`${inputBase} appearance-none ${props.className ?? ''}`}>
       {children}
     </select>
+  );
+}
+
+// Currency-formatted numeric input: shows "$12,345" at rest, drops to plain
+// digit entry on focus (formatting mid-keystroke fights cursor position),
+// then reformats and commits via onChange on blur — same convention as
+// SpendGoalModal's GoalInput. onChange fires the raw number, not an event,
+// following this codebase's other from-scratch form controls (SearchSelect).
+export function CurrencyInput({ value, onChange, placeholder = '$0', disabled, className = '' }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const displayValue = editing ? draft : value != null && value !== '' ? formatCurrency(Number(value)) : '';
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      placeholder={placeholder}
+      disabled={disabled}
+      onFocus={() => {
+        setDraft(value != null && value !== '' ? String(value) : '');
+        setEditing(true);
+      }}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== '') onChange(Number(draft));
+      }}
+      className={`${inputBase} font-mono ${className}`}
+    />
   );
 }
 

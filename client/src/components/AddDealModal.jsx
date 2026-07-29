@@ -1,23 +1,25 @@
 import { useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useLeads } from '../state/LeadsContext.jsx';
-import { OWNERS, SOURCES, CHANNELS, STAGE_LABELS } from '../lib/stages.js';
+import { OWNERS, SOURCES, CHANNELS, SALES_STAGES, STAGE_LABELS } from '../lib/stages.js';
 import { todayInput } from '../lib/dates.js';
 import { Modal } from './Overlay.jsx';
-import { Field, Input, Select, Button } from './ui.jsx';
+import { Field, Input, Select, Button, CurrencyInput } from './ui.jsx';
 import ContactSelect from './ContactSelect.jsx';
 
 // The company search-or-create + owner/source/channel/contact/date form,
 // shared by Outreach's "+ Add Deal" (stage S1, the default export below) and
 // Meetings' "+ Add Meeting" -> "Log new meeting" (stage S4, see
 // components/meetings/AddMeetingModal.jsx) — same deal-creation flow, just a
-// different target stage. Every deal requires a lead_id now (see
-// 0039_unify_deal_lead_identity), so this replaces the old free-text "brand
-// name" field, which let a rep create a deal with zero link to Directory and
-// silently duplicate a company that already existed there.
+// different default target stage; the Stage field lets either caller's user
+// override it to any point in S1-S4 (start_outreach() only accepts sales
+// stages — a deal can't be born already Won/Lost, see api.startLeadOutreach).
+// Every deal requires a lead_id now (see 0039_unify_deal_lead_identity), so
+// this replaces the old free-text "brand name" field, which let a rep create
+// a deal with zero link to Directory and silently duplicate a company that
+// already existed there.
 export function DealCreateForm({
-  stage = 'S1',
-  dateLabel = 'Date Entered (S1)',
+  stage: initialStage = 'S1',
   submitLabel = 'Add Deal',
   onClose,
   onCreated,
@@ -28,12 +30,15 @@ export function DealCreateForm({
   const [selectedLead, setSelectedLead] = useState(null);
   const [creatingNew, setCreatingNew] = useState(false);
   const [newVerticalId, setNewVerticalId] = useState('');
+  const [creatingContact, setCreatingContact] = useState(false);
+  const [newContact, setNewContact] = useState({ name: '', title: '', email: '' });
 
   const [form, setForm] = useState({
     owner: '',
     source: 'Outbound',
     channel: 'Email',
     contact_id: '',
+    stage: initialStage,
     entered_at: todayInput(), // start date — backdate for historical accounts
     deal_size: 10000,
   });
@@ -41,6 +46,8 @@ export function DealCreateForm({
   const [error, setError] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setNewContactField = (k) => (e) => setNewContact((c) => ({ ...c, [k]: e.target.value }));
+  const dateLabel = form.stage === 'S4' ? 'Meeting Date' : `Date Entered (${form.stage})`;
 
   // Companies already in the pipeline can't take a second deal (one deal per
   // lead, enforced by start_outreach()) — exclude them from search results.
@@ -74,6 +81,7 @@ export function DealCreateForm({
     e.preventDefault();
     if (!selectedLead && !creatingNew) return setError('Search for a company or create a new one.');
     if (creatingNew && !query.trim()) return setError('Company name is required.');
+    if (creatingContact && !newContact.name.trim()) return setError('Contact name is required.');
     setSaving(true);
     setError(null);
     try {
@@ -86,13 +94,25 @@ export function DealCreateForm({
         leadId = created.id;
         await refreshLeads();
       }
+      let contactId = form.contact_id;
+      if (creatingContact) {
+        // addContact doesn't return the created row's id directly (see
+        // api.js), just the company's contacts list re-fetched in id order —
+        // the new contact is always the highest id, i.e. the last entry.
+        const { contacts } = await api.addContact(leadId, {
+          name: newContact.name.trim(),
+          title: newContact.title.trim() || null,
+          email: newContact.email.trim() || null,
+        });
+        contactId = contacts[contacts.length - 1]?.id ?? '';
+      }
       const result = await api.startLeadOutreach(leadId, {
         owner: form.owner,
         source: form.source,
         channel: form.channel,
-        contact_id: form.contact_id,
+        contact_id: contactId,
         entered_at: form.entered_at,
-        stage,
+        stage: form.stage,
         deal_size: form.deal_size,
       });
       onCreated?.(result);
@@ -168,7 +188,41 @@ export function DealCreateForm({
       )}
 
       <Field label="Point of Contact">
-        <ContactSelect value={form.contact_id} onChange={set('contact_id')} />
+        {creatingContact ? (
+          <div className="border border-hairline p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="eyebrow text-text-muted">New Contact</span>
+              <button
+                type="button"
+                onClick={() => setCreatingContact(false)}
+                className="text-text-muted hover:text-text-primary text-[12px]"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                value={newContact.name}
+                onChange={setNewContactField('name')}
+                placeholder="Name"
+                autoFocus
+              />
+              <Input value={newContact.title} onChange={setNewContactField('title')} placeholder="Title" />
+              <Input
+                type="email"
+                value={newContact.email}
+                onChange={setNewContactField('email')}
+                placeholder="Email"
+              />
+            </div>
+          </div>
+        ) : (
+          <ContactSelect
+            value={form.contact_id}
+            onChange={set('contact_id')}
+            onCreateNew={() => setCreatingContact(true)}
+          />
+        )}
       </Field>
 
       <div className="grid grid-cols-3 gap-3">
@@ -196,7 +250,14 @@ export function DealCreateForm({
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Stage">
+          <Select value={form.stage} onChange={set('stage')}>
+            {SALES_STAGES.map((s) => (
+              <option key={s} value={s}>{s} · {STAGE_LABELS[s]}</option>
+            ))}
+          </Select>
+        </Field>
         <Field label={dateLabel}>
           <Input
             type="date"
@@ -207,20 +268,17 @@ export function DealCreateForm({
           />
         </Field>
         <Field label="Deal Size">
-          <Input type="number" min="0" step="1000" value={form.deal_size} onChange={set('deal_size')} className="font-mono" />
+          <CurrencyInput value={form.deal_size} onChange={(v) => setForm((f) => ({ ...f, deal_size: v }))} />
         </Field>
       </div>
 
       {error && <div className="text-red-400 text-[12px]">{error}</div>}
 
-      <div className="flex items-center justify-between pt-1">
-        <span className="eyebrow text-text-muted">Starts at {stage} · {STAGE_LABELS[stage]}</span>
-        <div className="flex gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>
-            {saving ? 'Saving…' : submitLabel}
-          </Button>
-        </div>
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={saving}>
+          {saving ? 'Saving…' : submitLabel}
+        </Button>
       </div>
     </form>
   );
@@ -231,13 +289,7 @@ export function DealCreateForm({
 export default function AddDealModal({ onClose, onCreated }) {
   return (
     <Modal title="Add Deal" onClose={onClose}>
-      <DealCreateForm
-        stage="S1"
-        dateLabel="Date Entered (S1)"
-        submitLabel="Add Deal"
-        onClose={onClose}
-        onCreated={onCreated}
-      />
+      <DealCreateForm stage="S1" submitLabel="Add Deal" onClose={onClose} onCreated={onCreated} />
     </Modal>
   );
 }

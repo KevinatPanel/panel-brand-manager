@@ -9,6 +9,7 @@ import ContactSelect from './ContactSelect.jsx';
 import DealOverviewFields from './deal/DealOverviewFields.jsx';
 import StageActions from './deal/StageActions.jsx';
 import TouchLog from './deal/TouchLog.jsx';
+import NotesSection from './deal/NotesSection.jsx';
 import CompanyIntel from './company/CompanyIntel.jsx';
 import { fmtDate, toDateInput } from '../lib/dates.js';
 import { gmail } from '../lib/gmail.js';
@@ -137,6 +138,12 @@ export default function DealDetailPanel() {
                 onChange={(e) => patch({ contact_id: e.target.value })}
               />
             </Field>
+          </div>
+
+          {/* Notes — timestamped + author-stamped (see NoteEditor: author is
+              derived from the signed-in user, not picked). */}
+          <div className="px-5 py-4 border-b border-hairline">
+            <NotesSection dealId={deal.id} />
           </div>
 
           {/* Company Intel — score/enrichment/signals/firmographics, the same

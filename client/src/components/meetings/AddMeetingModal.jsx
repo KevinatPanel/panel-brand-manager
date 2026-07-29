@@ -34,13 +34,7 @@ export default function AddMeetingModal({ onClose, onCreated }) {
       </div>
 
       {mode === 'new' ? (
-        <DealCreateForm
-          stage="S4"
-          dateLabel="Meeting Date"
-          submitLabel="Log Meeting"
-          onClose={onClose}
-          onCreated={onCreated}
-        />
+        <DealCreateForm stage="S4" submitLabel="Log Meeting" onClose={onClose} onCreated={onCreated} />
       ) : (
         <ConvertDealForm onClose={onClose} onCreated={onCreated} />
       )}
