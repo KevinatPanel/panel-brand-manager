@@ -53,7 +53,6 @@ export default function FirmographicsFields({ lead, verticals, after, children }
       <div className="mt-3" key={`desc-${lead.enriched_at ?? '0'}`}>
         <Field label="Description">
           <TextArea
-            rows={3}
             defaultValue={lead.description ?? ''}
             onBlur={(e) => after(() => api.updateLead(lead.id, { description: e.target.value }))}
             placeholder="What the company does, context, fit…"

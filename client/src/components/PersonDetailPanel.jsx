@@ -157,7 +157,6 @@ export default function PersonDetailPanel() {
             <div className="mt-3">
               <Field label="Notes / Background">
                 <TextArea
-                  rows={3}
                   defaultValue={person.notes ?? ''}
                   onBlur={(e) => patch({ notes: e.target.value })}
                   placeholder="Who they are, how we know them, relationship context…"

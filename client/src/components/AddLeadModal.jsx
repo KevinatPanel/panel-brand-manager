@@ -97,7 +97,7 @@ export default function AddLeadModal({ verticals, onClose, onCreated, asClient =
         </div>
 
         <Field label="Description">
-          <TextArea rows={3} value={form.description} onChange={set('description')} placeholder="What the company does, context, fit…" />
+          <TextArea value={form.description} onChange={set('description')} placeholder="What the company does, context, fit…" />
         </Field>
 
         {error && <div className="text-red-400 text-[12px]">{error}</div>}

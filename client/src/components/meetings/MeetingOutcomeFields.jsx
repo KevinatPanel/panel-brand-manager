@@ -25,7 +25,6 @@ export default function MeetingOutcomeFields({ deal, onChanged }) {
     <div className="space-y-3">
       <Field label="Meeting Notes">
         <TextArea
-          rows={2}
           defaultValue={deal.meeting_notes ?? ''}
           disabled={saving}
           onBlur={(e) => patch({ meeting_notes: e.target.value })}

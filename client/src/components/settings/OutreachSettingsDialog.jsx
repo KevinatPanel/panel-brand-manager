@@ -13,7 +13,7 @@ export default function OutreachSettingsDialog({ onClose }) {
   const page = PAGES.find((p) => p.key === active);
 
   return (
-    <Modal title="Outreach Settings" onClose={onClose} width="max-w-2xl">
+    <Modal title="Pipeline Settings" onClose={onClose} width="max-w-2xl">
       <div className="flex gap-6">
         <div className="w-40 shrink-0 space-y-0.5">
           {PAGES.map((p) => (
