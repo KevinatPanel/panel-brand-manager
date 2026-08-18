@@ -80,6 +80,24 @@ async function recordStage(dealId, stage, when = nowIso()) {
   );
 }
 
+// Drop any snooze on a deal. A stage move means the deal is live again, so a
+// lingering snooze is stale by definition — and worse, it would leave the deal
+// hidden from the board and out of the weighted total right after being
+// dragged or advanced, with nothing on screen explaining why. Unconditional:
+// a harmless no-op update when nothing was set.
+//
+// Deliberately does NOT touch updated_at — the stage-sync trigger (0003) sets
+// updated_at from the stage_history entered_at, which setStage() can backdate;
+// writing nowIso() here would clobber that and reshuffle listDeals' ordering.
+async function clearSnooze(dealId) {
+  unwrap(
+    await supabase
+      .from('deals')
+      .update({ snoozed_until: null, snooze_note: null })
+      .eq('id', dealId),
+  );
+}
+
 // ===== Ad tracker helpers ========================================
 
 async function fetchAdItemSummary(id) {
@@ -259,6 +277,17 @@ export const api = {
       patch.meeting_outcome = MEETING_OUTCOMES.includes(body.meeting_outcome) ? body.meeting_outcome : null;
     }
     if (body.meeting_notes !== undefined) patch.meeting_notes = body.meeting_notes;
+    // Snooze: a plain two-column patch, so it rides the whitelist rather than
+    // earning its own method (markLost is separate only because it writes
+    // stage_history too). Same date normalizing as addTask's due_date.
+    if (body.snoozed_until !== undefined) {
+      patch.snoozed_until = body.snoozed_until
+        ? toDateInput(normalizeDateInput(body.snoozed_until))
+        : null;
+    }
+    if (body.snooze_note !== undefined) {
+      patch.snooze_note = (body.snooze_note ?? '').toString().trim() || null;
+    }
     unwrap(await supabase.from('deals').update(patch).eq('id', id));
     return fetchDealSummary(id);
   },
@@ -269,12 +298,14 @@ export const api = {
     const next = nextStageCode(deal.current_stage);
     if (!next) throw new Error(`No next stage after ${deal.current_stage}`);
     await recordStage(id, next);
+    await clearSnooze(id);
     return fetchDealSummary(id);
   },
 
   setStage: async (id, stage, when) => {
     if (!STAGE_CODES.includes(stage)) throw new Error('Invalid stage code');
     await recordStage(id, stage, when ? normalizeDateInput(when) : undefined);
+    await clearSnooze(id);
     return fetchDealSummary(id);
   },
 
@@ -298,7 +329,12 @@ export const api = {
   markLost: async (id, reason) => {
     const r = (reason ?? '').toString().trim();
     if (!r) throw new Error('A lost reason is required');
-    unwrap(await supabase.from('deals').update({ closed_lost_reason: r, updated_at: nowIso() }).eq('id', id));
+    unwrap(
+      await supabase
+        .from('deals')
+        .update({ closed_lost_reason: r, snoozed_until: null, snooze_note: null, updated_at: nowIso() })
+        .eq('id', id),
+    );
     await recordStage(id, 'LOST');
     return fetchDealSummary(id);
   },

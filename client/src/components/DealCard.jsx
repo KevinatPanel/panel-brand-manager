@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { formatCurrency } from '../lib/stages.js';
+import { formatCurrency, snoozeStatus } from '../lib/stages.js';
+import { fmtDateOnly } from '../lib/dates.js';
 import { Icon } from './ui.jsx';
 
 // Every card field but the company name (always shown) is toggleable from
@@ -18,6 +19,7 @@ export const DEFAULT_CARD_FIELDS = Object.fromEntries(CARD_FIELD_OPTIONS.map((o)
 // another stage column.
 export default function DealCard({ deal, fields = DEFAULT_CARD_FIELDS, onClick }) {
   const [dragging, setDragging] = useState(false);
+  const snooze = snoozeStatus(deal);
   const showStats = fields.daysInPipeline || fields.dealSize;
   const showFooter = showStats || fields.owner;
 
@@ -32,13 +34,31 @@ export default function DealCard({ deal, fields = DEFAULT_CARD_FIELDS, onClick }
       }}
       onDragEnd={() => setDragging(false)}
       className={`panel-card w-full text-left p-3 block cursor-grab active:cursor-grabbing ${
-        dragging ? 'opacity-50' : ''
+        dragging ? 'opacity-50' : snooze === 'active' ? 'opacity-40' : ''
       }`}
     >
       <div className="min-w-0">
         <div className="text-text-primary text-[13px] font-semibold truncate">
           {deal.company_name}
         </div>
+        {/* Always shown, never a toggleable card field — this chip is the
+            reason a snoozed card looks faded, so hiding it would make the
+            dimming inexplicable. Note goes on the tooltip to keep the card
+            dense; it renders in full in StageActions. */}
+        {snooze && (
+          <div className="mt-1.5">
+            <span
+              title={deal.snooze_note ?? undefined}
+              className={`eyebrow border px-1.5 py-0.5 inline-block ${
+                snooze === 'active'
+                  ? 'text-text-secondary border-hairline'
+                  : 'text-signal border-signal/40'
+              }`}
+            >
+              {snooze === 'active' ? `Snoozed until ${fmtDateOnly(deal.snoozed_until)}` : 'Snooze ended'}
+            </span>
+          </div>
+        )}
         {fields.contact && deal.primary_stakeholder_name && (
           <div className="text-text-secondary text-[12px] mt-0.5 truncate">
             {deal.primary_stakeholder_name}

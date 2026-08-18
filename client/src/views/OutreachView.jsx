@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
-import { OUTREACH_STAGES, FUNNEL_STAGES, STAGE_LABELS, formatCurrency } from '../lib/stages.js';
+import { OUTREACH_STAGES, FUNNEL_STAGES, STAGE_LABELS, formatCurrency, isDealSnoozed } from '../lib/stages.js';
 import { api } from '../lib/api.js';
 import KanbanBoard from '../components/KanbanBoard.jsx';
 import ViewHeader from '../components/ViewHeader.jsx';
@@ -58,6 +58,8 @@ export default function OutreachView() {
   const query = searchParams.get('q') ?? '';
   const owner = searchParams.get('owner') ?? '';
   const channel = searchParams.get('channel') ?? '';
+  // A visibility toggle, not a filter — see the note on filtersActive below.
+  const showSnoozed = searchParams.get('snoozed') === '1';
 
   function updateParams(patch) {
     const next = new URLSearchParams(searchParams);
@@ -70,6 +72,7 @@ export default function OutreachView() {
   const setQuery = (v) => updateParams({ q: v });
   const setOwner = (v) => updateParams({ owner: v });
   const setChannel = (v) => updateParams({ channel: v });
+  const setShowSnoozed = (v) => updateParams({ snoozed: v ? '1' : '' });
 
   // Distinct owners/channels present in the data, for the filter dropdowns.
   const owners = useMemo(
@@ -81,6 +84,9 @@ export default function OutreachView() {
     [deals],
   );
 
+  // Deliberately excludes `snoozed`: revealing parked deals isn't narrowing
+  // the board, so it shouldn't flip the subtitle to "N of M match" or light up
+  // the Clear button.
   const filtersActive = query.trim() || owner || channel;
 
   // Apply search + filters once; the result feeds every column below.
@@ -116,31 +122,54 @@ export default function OutreachView() {
     }
   };
 
+  // Snooze splits `filtered` two ways, and the two lists are deliberately NOT
+  // the same:
+  //   visible — what the board renders. Snoozed deals are hidden unless the
+  //             "Show snoozed" toggle is on.
+  //   live    — what every dollar figure counts. Snoozed deals are ALWAYS
+  //             excluded here, even while the toggle has them on screen, so
+  //             the weighted total stays the true value of the pipeline that
+  //             can actually be worked right now — which is the whole point of
+  //             the feature. Don't collapse these back into one list.
+  const snoozedCount = useMemo(() => filtered.filter(isDealSnoozed).length, [filtered]);
+  const visible = useMemo(
+    () => (showSnoozed ? filtered : filtered.filter((d) => !isDealSnoozed(d))),
+    [filtered, showSnoozed],
+  );
+  const live = useMemo(() => filtered.filter((d) => !isDealSnoozed(d)), [filtered]);
+
   const weightedValue = (deal) => (deal.deal_size ?? 0) * (weights[deal.current_stage] ?? 0);
 
   // One column per funnel stage (S1-S4, WON, LOST) — every column is
   // collapsible now, not just LOST; WON/LOST start collapsed since they're
   // terminal outcomes, S1-S4 start expanded since they're the active funnel.
-  const columns = FUNNEL_STAGES.map((code) => {
-    const colDeals = filtered.filter((d) => d.current_stage === code);
-    return {
-      code,
-      label: STAGE_LABELS[code],
-      deals: colDeals,
-      collapsible: true,
-      defaultOpen: code !== 'WON' && code !== 'LOST',
-      weightedTotal: colDeals.reduce((sum, d) => sum + weightedValue(d), 0),
-    };
-  });
+  const columns = FUNNEL_STAGES.map((code) => ({
+    code,
+    label: STAGE_LABELS[code],
+    deals: visible.filter((d) => d.current_stage === code),
+    collapsible: true,
+    defaultOpen: code !== 'WON' && code !== 'LOST',
+    // From `live`, never from the rendered cards — the column total must not
+    // move when "Show snoozed" is toggled.
+    weightedTotal: live
+      .filter((d) => d.current_stage === code)
+      .reduce((sum, d) => sum + weightedValue(d), 0),
+  }));
 
-  const weightedGrandTotal = filtered
+  const weightedGrandTotal = live
     .filter((d) => FUNNEL_STAGES.includes(d.current_stage))
     .reduce((sum, d) => sum + weightedValue(d), 0);
 
-  const activeCount = filtered.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length;
-  const subtitle = filtersActive
-    ? `${activeCount} of ${deals.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length} deals match`
-    : `${activeCount} deals in outreach`;
+  const activeCount = live.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length;
+  const totalActive = deals.filter(
+    (d) => OUTREACH_STAGES.includes(d.current_stage) && !isDealSnoozed(d),
+  ).length;
+  const subtitle = [
+    filtersActive ? `${activeCount} of ${totalActive} deals match` : `${activeCount} deals in outreach`,
+    snoozedCount ? `${snoozedCount} snoozed` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const clearFilters = () => {
     setQuery('');
@@ -194,6 +223,22 @@ export default function OutreachView() {
         right={
           <>
             {filtersActive && <Button variant="ghost" onClick={clearFilters}>Clear</Button>}
+            {/* Hides itself when there's nothing parked, so the toolbar stays
+                clean in the common case. */}
+            {(snoozedCount > 0 || showSnoozed) && (
+              <button
+                type="button"
+                aria-pressed={showSnoozed}
+                onClick={() => setShowSnoozed(!showSnoozed)}
+                className={`px-3 py-2 text-[13px] border transition-colors ${
+                  showSnoozed
+                    ? 'border-signal/50 text-signal'
+                    : 'border-hairline text-text-muted hover:text-text-primary hover:bg-card-hover'
+                }`}
+              >
+                Show snoozed{snoozedCount ? ` (${snoozedCount})` : ''}
+              </button>
+            )}
             <CardFieldsMenu fields={cardFields} onChange={updateCardFields} />
           </>
         }

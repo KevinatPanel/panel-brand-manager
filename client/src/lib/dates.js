@@ -56,3 +56,17 @@ export function daysBetween(aIso, bIso = nowIso()) {
   const b = new Date(bIso).getTime();
   return Math.max(0, Math.floor((b - a) / DAY_MS));
 }
+
+// Add N calendar months to a "YYYY-MM-DD" string, returning the same format.
+// Built from explicit local Y/M/D components (same reason as fmtDateOnly) and
+// clamped to the last day of the target month, so Jan 31 + 1 month is Feb 28,
+// not the Mar 3 a naive Date#setMonth rolls over to. N may be negative.
+export function addMonthsToDateInput(dateStr, months) {
+  const [y, m, d] = String(dateStr ?? '').split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const targetMonth = m - 1 + months;
+  // Day 0 of the following month is the last day of the target month.
+  const lastDay = new Date(y, targetMonth + 1, 0).getDate();
+  const result = new Date(y, targetMonth, Math.min(d, lastDay));
+  return toDateInput(result.toISOString());
+}

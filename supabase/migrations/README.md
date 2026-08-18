@@ -53,6 +53,10 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0042 | `0042_deal_attachments_kind.sql` | `deal_attachments.kind` (tags meeting-transcript uploads vs. general attachments) |
 | 0043 | `0043_drop_leads_payable_event.sql` | Drops `leads.everflow_payable_event_name` (cut from Meetings v1 scope); reverts `merge_leads()` |
 | 0044 | `0044_start_outreach_target_stage.sql` | Adds `p_stage` param to `start_outreach()` (default `'S1'`) so a deal can be created directly at S4 |
+| 0045 | `0045_client_offers.sql` | `client_offers` table (per-client offer list, used by the per-offer Everflow spend tracking) |
+| 0046 | `0046_deal_size_meeting_fields.sql` | `deals.deal_size` + `meeting_outcome`/`meeting_notes`; recreates `deal_summaries`; `start_outreach()` gains `p_deal_size` |
+| 0047 | `0047_stage_weights.sql` | `stage_weights` table — the per-stage 0-1 multiplier behind the weighted pipeline total |
+| 0048 | `0048_deal_snooze.sql` | `deals.snoozed_until` + `snooze_note` (park a deal until a date; excluded from the weighted total while snoozed); recreates `deal_summaries` |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number

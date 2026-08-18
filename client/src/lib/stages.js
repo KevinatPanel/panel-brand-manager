@@ -104,6 +104,31 @@ export function isTaskOverdue(task) {
 }
 
 // ---------------------------------------------------------------------------
+// Snooze: a deal parked until a future date (see 0048_deal_snooze).
+// deals.snoozed_until is the only stored signal — "still snoozed?" and "snooze
+// ended but not yet cleared?" are derived here at render time and never
+// stored, the same convention as isTaskOverdue above and days_in_stage.
+// ---------------------------------------------------------------------------
+
+// null (never snoozed / cleared) | 'active' (wake date still ahead) |
+// 'ended' (wake date reached, deal is back on the board, not yet cleared).
+export function snoozeStatus(deal) {
+  const until = deal?.snoozed_until;
+  if (!until) return null;
+  // Both sides are canonical "YYYY-MM-DD" (PostgREST serializes a `date`
+  // column as that string), so a plain lexicographic compare is chronological
+  // — and unlike isTaskOverdue's Date compare it has no timezone failure mode
+  // at all, which is the safer pattern for date-only columns. A deal wakes ON
+  // its snoozed_until date, not the day after.
+  return until > todayInput() ? 'active' : 'ended';
+}
+
+// Snoozed deals are hidden from the Outreach board by default and are ALWAYS
+// excluded from the weighted pipeline total, even while the "Show snoozed"
+// toggle has them on screen.
+export const isDealSnoozed = (deal) => snoozeStatus(deal) === 'active';
+
+// ---------------------------------------------------------------------------
 // Ad Tracker: per-client creator-ad pipeline (see ad_items/ad_item_stage_history).
 // Small, purpose-built stage list — deliberately not the generic lanes/tasks
 // engine tried in the (removed) Activation Surface.
