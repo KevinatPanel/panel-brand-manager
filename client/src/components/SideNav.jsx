@@ -44,7 +44,7 @@ const SECTIONS = [
   {
     label: 'Sales',
     items: [
-      { to: '/outreach', label: 'Outreach' },
+      { to: '/outreach', label: 'Pipeline' },
       { to: '/meetings', label: 'Meetings' },
     ],
   },

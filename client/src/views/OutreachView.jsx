@@ -165,7 +165,7 @@ export default function OutreachView() {
     (d) => OUTREACH_STAGES.includes(d.current_stage) && !isDealSnoozed(d),
   ).length;
   const subtitle = [
-    filtersActive ? `${activeCount} of ${totalActive} deals match` : `${activeCount} deals in outreach`,
+    filtersActive ? `${activeCount} of ${totalActive} deals match` : `${activeCount} deals in pipeline`,
     snoozedCount ? `${snoozedCount} snoozed` : null,
   ]
     .filter(Boolean)
@@ -179,15 +179,15 @@ export default function OutreachView() {
 
   return (
     <div>
-      <ViewHeader title="Outreach" subtitle={subtitle}>
+      <ViewHeader title="Pipeline" subtitle={subtitle}>
         <div className="text-right mr-2">
           <div className="eyebrow text-text-muted">Weighted Pipeline</div>
           <div className="font-mono text-text-primary text-[13px]">{formatCurrency(weightedGrandTotal)}</div>
         </div>
         <IconButton
           icon="gear"
-          title="Outreach Settings"
-          aria-label="Outreach Settings"
+          title="Pipeline Settings"
+          aria-label="Pipeline Settings"
           onClick={() => setSettingsOpen(true)}
         />
         <Button variant="primary" onClick={() => setAdding(true)}>+ Add Deal</Button>

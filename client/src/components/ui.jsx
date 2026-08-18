@@ -3,7 +3,7 @@
 // Hard corners, hairline borders, Inter labels, Signal Green only for CTAs.
 // ---------------------------------------------------------------------------
 
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { formatCurrency } from '../lib/stages.js';
 
 export function Eyebrow({ children, className = '' }) {
@@ -28,8 +28,56 @@ export function Input(props) {
   return <input {...props} className={`${inputBase} ${props.className ?? ''}`} />;
 }
 
-export function TextArea(props) {
-  return <textarea {...props} className={`${inputBase} resize-none ${props.className ?? ''}`} />;
+// Textareas start at `rows` lines and grow with their content up to
+// MAX_TEXTAREA_HEIGHT, so you can see what you typed without scrolling inside a
+// four-line box. Still hand-resizable (resize-y); once dragged, auto-growing
+// stops so we don't fight the height the user picked.
+const MAX_TEXTAREA_HEIGHT = 360;
+
+const RESIZE_GRIP = 18;   // px square in the corner the browser draws the grip in
+
+export function TextArea({ rows = 5, onInput, onPointerDown, ...props }) {
+  const ref = useRef(null);
+  const manual = useRef(false);
+
+  function fit() {
+    const el = ref.current;
+    if (!el || manual.current) return;
+    el.style.height = '';                            // back to the rows-based floor
+    const borders = el.offsetHeight - el.clientHeight;
+    const content = el.scrollHeight + borders;
+    if (content > el.offsetHeight) {
+      el.style.height = `${Math.min(content, MAX_TEXTAREA_HEIGHT)}px`;
+    }
+    el.style.overflowY = content > MAX_TEXTAREA_HEIGHT ? 'auto' : 'hidden';
+  }
+
+  // Re-fit on mount and whenever a controlled value changes; uncontrolled
+  // fields (defaultValue + onBlur, used across the detail panels) re-fit from
+  // the onInput handler below.
+  useLayoutEffect(fit, [props.value]);
+
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={rows}
+      onInput={(e) => {
+        fit();
+        onInput?.(e);
+      }}
+      onPointerDown={(e) => {
+        // Grabbing the corner grip means the user is picking the height
+        // themselves — stop auto-growing so we don't undo their drag.
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX > r.right - RESIZE_GRIP && e.clientY > r.bottom - RESIZE_GRIP) {
+          manual.current = true;
+        }
+        onPointerDown?.(e);
+      }}
+      className={`${inputBase} resize-y ${props.className ?? ''}`}
+    />
+  );
 }
 
 export function Select({ children, ...props }) {

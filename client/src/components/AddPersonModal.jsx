@@ -119,7 +119,7 @@ export default function AddPersonModal({ onClose, onCreated, defaultLeadId = '' 
         </Field>
 
         <Field label="Notes / Background">
-          <TextArea rows={3} value={form.notes} onChange={set('notes')} placeholder="Who they are, how we know them…" />
+          <TextArea value={form.notes} onChange={set('notes')} placeholder="Who they are, how we know them…" />
         </Field>
 
         {error && <div className="text-red-400 text-[12px]">{error}</div>}

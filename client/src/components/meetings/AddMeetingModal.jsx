@@ -86,8 +86,8 @@ function ConvertDealForm({ onClose, onCreated }) {
           value={dealId}
           onChange={setDealId}
           options={options}
-          placeholder="Search Outreach deals…"
-          emptyText="No deals in Outreach"
+          placeholder="Search pipeline deals…"
+          emptyText="No deals in the pipeline"
         />
       </Field>
 
