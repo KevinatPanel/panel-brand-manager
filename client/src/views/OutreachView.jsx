@@ -8,11 +8,17 @@ import ViewHeader from '../components/ViewHeader.jsx';
 import Toolbar from '../components/Toolbar.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import CardFieldsMenu from '../components/CardFieldsMenu.jsx';
+import SnoozedDrawer, { DRAWER_HEADER, drawerBody } from '../components/SnoozedDrawer.jsx';
 import OutreachSettingsDialog from '../components/settings/OutreachSettingsDialog.jsx';
 import { DEFAULT_CARD_FIELDS } from '../components/DealCard.jsx';
 import { Button, Input, Select, IconButton } from '../components/ui.jsx';
 
 const CARD_FIELDS_KEY = 'deal-card-fields';
+// Chrome above the board: ViewHeader + Toolbar. The board sizes itself with
+// calc(100vh - topOffset), so the snoozed drawer's height has to be added here
+// or the drawer renders below the fold.
+const BOARD_CHROME = '7rem';
+const DRAWER_KEY = 'snoozed-drawer-open';
 
 // Outreach Board: the whole sales funnel, S1 through both terminal outcomes
 // (WON/LOST), each column collapsible and independently hideable. Meetings
@@ -131,7 +137,8 @@ export default function OutreachView() {
   //             the weighted total stays the true value of the pipeline that
   //             can actually be worked right now — which is the whole point of
   //             the feature. Don't collapse these back into one list.
-  const snoozedCount = useMemo(() => filtered.filter(isDealSnoozed).length, [filtered]);
+  const snoozed = useMemo(() => filtered.filter(isDealSnoozed), [filtered]);
+  const snoozedCount = snoozed.length;
   const visible = useMemo(
     () => (showSnoozed ? filtered : filtered.filter((d) => !isDealSnoozed(d))),
     [filtered, showSnoozed],
@@ -170,6 +177,20 @@ export default function OutreachView() {
   ]
     .filter(Boolean)
     .join(' · ');
+
+  // Owned here, not in the drawer: the board's height is a calc() that has to
+  // shrink by exactly the drawer's height, so both read one flag. Persisted
+  // per-browser, same convention as the kanban columns' collapse state.
+  const [drawerOpen, setDrawerOpen] = useState(() => localStorage.getItem(DRAWER_KEY) === '1');
+  function toggleDrawer() {
+    setDrawerOpen((o) => {
+      localStorage.setItem(DRAWER_KEY, o ? '0' : '1');
+      return !o;
+    });
+  }
+  const boardOffset = snoozedCount
+    ? `calc(${BOARD_CHROME} + ${DRAWER_HEADER}${drawerOpen ? ` + ${drawerBody(snoozedCount)}` : ''})`
+    : BOARD_CHROME;
 
   const clearFilters = () => {
     setQuery('');
@@ -252,9 +273,19 @@ export default function OutreachView() {
           cardFields={cardFields}
           onCardClick={openDeal}
           onMoveCard={handleMoveCard}
-          topOffset="7rem"
+          topOffset={boardOffset}
           scrollKey={searchParams.toString()}
           loading={loading}
+        />
+      )}
+
+      {snoozedCount > 0 && (
+        <SnoozedDrawer
+          deals={snoozed}
+          onOpenDeal={openDeal}
+          onRefresh={refresh}
+          open={drawerOpen}
+          onToggle={toggleDrawer}
         />
       )}
 
