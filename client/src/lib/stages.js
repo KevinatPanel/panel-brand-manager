@@ -129,6 +129,20 @@ export function snoozeStatus(deal) {
 export const isDealSnoozed = (deal) => snoozeStatus(deal) === 'active';
 
 // ---------------------------------------------------------------------------
+// Converted to client: a Closed Won deal whose company has been flagged
+// is_client (see api.convertDealToClient). Nothing new is stored on the deal —
+// "converted?" is just WON + the lead's existing is_client flag, which
+// deal_summaries already exposes, so this needed no migration.
+//
+// A converted deal drops off the Pipeline board entirely (and out of the
+// weighted total): the relationship is now run from the client's own page, so
+// leaving it sitting in Closed Won forever only makes that column a graveyard.
+// The deal row is untouched — the stage history, touches and won outcome all
+// stay intact and reachable from the client page.
+// ---------------------------------------------------------------------------
+export const isConvertedClient = (deal) => deal?.current_stage === 'WON' && !!deal?.is_client;
+
+// ---------------------------------------------------------------------------
 // Ad Tracker: per-client creator-ad pipeline (see ad_items/ad_item_stage_history).
 // Small, purpose-built stage list — deliberately not the generic lanes/tasks
 // engine tried in the (removed) Activation Surface.

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api.js';
-import { nextStageCode, STAGE_LABELS, snoozeStatus } from '../../lib/stages.js';
+import { useLeads } from '../../state/LeadsContext.jsx';
+import { isConvertedClient, nextStageCode, STAGE_LABELS, snoozeStatus } from '../../lib/stages.js';
 import { addMonthsToDateInput, fmtDateOnly, todayInput } from '../../lib/dates.js';
 import { Button, Input, Eyebrow } from '../ui.jsx';
 
@@ -27,7 +29,12 @@ const SNOOZE_PRESETS = [
 // `after(fn)` is the caller's own mutate-then-reload wrapper: run the async
 // fn, then reload whatever state the caller owns.
 export default function StageActions({ deal, busy, after }) {
+  const navigate = useNavigate();
+  // The caller's after() refreshes deals; converting also flips a *lead* flag,
+  // which the sidebar's client list and CompanyView's header read from here.
+  const { refresh: refreshLeads } = useLeads();
   const [showLost, setShowLost] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [showSnooze, setShowSnooze] = useState(false);
   const [snoozeDate, setSnoozeDate] = useState('');
@@ -37,6 +44,7 @@ export default function StageActions({ deal, busy, after }) {
   const isLost = deal.current_stage === 'LOST';
   const isWon = deal.current_stage === 'WON';
   const isTerminal = isLost || isWon;
+  const isConverted = isConvertedClient(deal);
   const snooze = snoozeStatus(deal); // null | 'active' | 'ended'
   const today = todayInput();
 
@@ -47,9 +55,26 @@ export default function StageActions({ deal, busy, after }) {
           <Button variant="primary" disabled={busy} onClick={() => after(() => api.advanceDeal(deal.id))}>
             Move to {next} · {STAGE_LABELS[next]}
           </Button>
+        ) : isWon ? (
+          /* Closed Won is where the sale ends and the account begins: the one
+             action left is handing the company over to Clients. Once converted
+             the deal is off the board, so all that's left here is the way back
+             to the client page. */
+          isConverted ? (
+            <>
+              <span className="text-text-secondary text-[12px]">Closed Won — moved to Clients</span>
+              <Button variant="ghost" onClick={() => navigate(`/clients/${deal.lead_id}`)}>
+                View client page →
+              </Button>
+            </>
+          ) : (
+            <Button variant="primary" disabled={busy} onClick={() => setShowConvert((s) => !s)}>
+              ★ Move to Clients
+            </Button>
+          )
         ) : (
           <span className="text-text-secondary text-[12px]">
-            {isLost ? 'Closed Lost — terminal' : isWon ? 'Closed Won — terminal' : 'No further stage action'}
+            {isLost ? 'Closed Lost — terminal' : 'No further stage action'}
           </span>
         )}
 
@@ -91,6 +116,37 @@ export default function StageActions({ deal, busy, after }) {
               onClick={() => after(() => api.markLost(deal.id, lostReason)).then(() => setShowLost(false))}
             >
               Confirm Lost
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Move to Clients — confirmed rather than one-click because it takes the
+          deal off the Pipeline board and there's no un-client button anywhere
+          in the app to walk it back with. */}
+      {showConvert && (
+        <div className="border border-hairline p-3 space-y-2">
+          <Eyebrow>Move to Clients</Eyebrow>
+          <p className="text-[12px] text-text-secondary">
+            Marks {deal.company_name} as a client — it gets its own client page, with spend
+            goals and the Ad Tracker — and takes this deal off the Pipeline board. The deal,
+            its stage history and its Closed Won outcome are all kept.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowConvert(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() =>
+                after(() => api.convertDealToClient(deal.id))
+                  .then(() => refreshLeads())
+                  .then(() => {
+                    setShowConvert(false);
+                    navigate(`/clients/${deal.lead_id}`);
+                  })
+              }
+            >
+              Move to Clients
             </Button>
           </div>
         </div>

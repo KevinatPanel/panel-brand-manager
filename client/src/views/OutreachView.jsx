@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeals } from '../state/DealsContext.jsx';
-import { OUTREACH_STAGES, FUNNEL_STAGES, STAGE_LABELS, formatCurrency, isDealSnoozed } from '../lib/stages.js';
+import {
+  OUTREACH_STAGES,
+  FUNNEL_STAGES,
+  STAGE_LABELS,
+  formatCurrency,
+  isConvertedClient,
+  isDealSnoozed,
+} from '../lib/stages.js';
 import { api } from '../lib/api.js';
 import KanbanBoard from '../components/KanbanBoard.jsx';
 import ViewHeader from '../components/ViewHeader.jsx';
@@ -96,9 +103,14 @@ export default function OutreachView() {
   const filtersActive = query.trim() || owner || channel;
 
   // Apply search + filters once; the result feeds every column below.
+  // Converted deals leave the board for good — unlike snooze there's no toggle
+  // to bring them back, because the company now lives under Clients and its
+  // won deal is still one click away from there.
+  const onBoard = useMemo(() => deals.filter((d) => !isConvertedClient(d)), [deals]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return deals.filter((d) => {
+    return onBoard.filter((d) => {
       if (q) {
         const hay = `${d.company_name ?? ''} ${d.owner ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -107,7 +119,7 @@ export default function OutreachView() {
       if (channel && d.channel !== channel) return false;
       return true;
     });
-  }, [deals, query, owner, channel]);
+  }, [onBoard, query, owner, channel]);
 
   // Move a dragged card to a new stage. Dropping onto LOST prompts for the
   // required reason and uses markLost(); other stages use setStage().
@@ -168,7 +180,7 @@ export default function OutreachView() {
     .reduce((sum, d) => sum + weightedValue(d), 0);
 
   const activeCount = live.filter((d) => OUTREACH_STAGES.includes(d.current_stage)).length;
-  const totalActive = deals.filter(
+  const totalActive = onBoard.filter(
     (d) => OUTREACH_STAGES.includes(d.current_stage) && !isDealSnoozed(d),
   ).length;
   const subtitle = [

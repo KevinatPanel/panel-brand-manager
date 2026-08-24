@@ -339,6 +339,31 @@ export const api = {
     return fetchDealSummary(id);
   },
 
+  // Move a Closed Won deal over to Clients: flag the company is_client, which
+  // (a) gives it a client page — /clients/:id, the same CompanyProfile with the
+  // spend goal + Ad Tracker sections switched on — and (b) drops the deal off
+  // the Pipeline board, since isConvertedClient() reads WON + is_client.
+  //
+  // Deliberately no write to `deals`: the deal row, its stage history and its
+  // won outcome all stay exactly as they are, so nothing about the sales record
+  // is lost by converting. That's also why there's no migration behind this —
+  // deal_summaries already carries l.is_client.
+  convertDealToClient: async (id) => {
+    const deal = unwrap(
+      await supabase.from('deals').select('lead_id, current_stage').eq('id', id).single(),
+    );
+    if (deal.current_stage !== 'WON') {
+      throw new Error('Only a Closed Won deal can be moved to Clients');
+    }
+    unwrap(
+      await supabase
+        .from('leads')
+        .update({ is_client: true, updated_at: nowIso() })
+        .eq('id', deal.lead_id),
+    );
+    return { lead_id: deal.lead_id };
+  },
+
   deleteDeal: async (id) => {
     // .select() so a silently-filtered 0-row delete (RLS / no match) surfaces as
     // an error instead of a no-op that looks like "nothing happened".
