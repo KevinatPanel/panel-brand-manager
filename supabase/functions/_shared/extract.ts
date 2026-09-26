@@ -1,7 +1,8 @@
-// Claude-powered extraction of the external person + their company from a single
-// (sent) email. The pollers/backfill feed in the From/To/Cc + subject + decoded
-// plaintext body (signature included); Claude returns one structured record we
-// turn into a contact/company suggestion.
+// Claude-powered extraction of the external people + their companies from a
+// single email (sent OR received). The pollers/backfill feed in every
+// participant (From/To/Cc/Bcc) + subject + decoded plaintext body (signature
+// included); Claude returns one structured record per external person we're
+// asking about, which we turn into contact/company suggestions.
 //
 // Defensive by design: a bad email, a timeout, or an API hiccup returns null so
 // one message never kills a backfill batch. Uses a forced tool call so the model
@@ -12,9 +13,19 @@ const MODEL = "claude-haiku-4-5-20251001"; // cheap + fast for backfill scale
 const TIMEOUT_MS = 20_000;
 const MAX_BODY_CHARS = 6_000; // signatures live near the top; cap tokens/cost
 
+export type ParticipantRole = "from" | "to" | "cc" | "bcc";
+
+export interface Participant {
+  email: string;
+  role: ParticipantRole;
+  displayName: string; // "" when the header had no display name
+}
+
 export interface ExtractInput {
-  from: string; // raw From header (may be "Name <email>")
-  to: string[]; // recipient addresses (the external counterparties)
+  direction: "outbound" | "inbound";
+  rep: string; // the connected rep's own address
+  participants: Participant[]; // everyone on the message
+  people: string[]; // the external addresses we want records for
   subject: string | null;
   body: string; // decoded plaintext, quoted reply chain already stripped
 }
@@ -26,53 +37,71 @@ export interface ExtractedPerson {
   linkedin: string | null;
   location: string | null;
   seniority: string | null;
+  company_name: string | null;
 }
 
 export interface Extracted {
-  company_name: string | null;
-  person: ExtractedPerson;
+  people: Map<string, ExtractedPerson>; // keyed by lowercase email
   confidence: "high" | "medium" | "low";
 }
 
 const TOOL = {
-  name: "record_contact",
+  name: "record_contacts",
   description:
-    "Record the external person and their company inferred from the email. " +
-    "The external person is the recipient (To/Cc), NOT the sender (the sender is " +
-    "our own rep). Pull title/phone/LinkedIn/location from the signature block or " +
-    "body when present. Use null for anything not stated — never guess. Set " +
-    "confidence to how sure you are this is a real business contact at a real company.",
+    "Record each requested external person and their company, inferred from the email. " +
+    "Return exactly one entry per requested email address. Pull name/title/phone/LinkedIn/" +
+    "location from signature blocks, greetings or the body only when they clearly belong " +
+    "to THAT person (a signature usually belongs to the sender). Use null for anything not " +
+    "stated — never guess, and never copy one person's details onto another. Set confidence " +
+    "to how sure you are these are real business contacts at real companies.",
   input_schema: {
     type: "object",
     properties: {
-      company_name: { type: ["string", "null"], description: "The recipient's company / brand name." },
-      person: {
-        type: "object",
-        properties: {
-          name: { type: ["string", "null"] },
-          title: { type: ["string", "null"], description: "Job title, e.g. 'VP Growth'." },
-          phone: { type: ["string", "null"] },
-          linkedin: { type: ["string", "null"], description: "LinkedIn profile URL." },
-          location: { type: ["string", "null"], description: "City / region, e.g. 'San Francisco, CA'." },
-          seniority: { type: ["string", "null"], description: "Role level / department, e.g. 'Director, Marketing'." },
+      people: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            email: { type: "string", description: "One of the requested addresses, verbatim." },
+            name: { type: ["string", "null"] },
+            title: { type: ["string", "null"], description: "Job title, e.g. 'VP Growth'." },
+            phone: { type: ["string", "null"] },
+            linkedin: { type: ["string", "null"], description: "LinkedIn profile URL." },
+            location: { type: ["string", "null"], description: "City / region, e.g. 'San Francisco, CA'." },
+            seniority: { type: ["string", "null"], description: "Role level / department, e.g. 'Director, Marketing'." },
+            company_name: { type: ["string", "null"], description: "This person's company / brand name." },
+          },
+          required: ["email", "name", "title", "phone", "linkedin", "location", "seniority", "company_name"],
         },
-        required: ["name", "title", "phone", "linkedin", "location", "seniority"],
       },
       confidence: { type: "string", enum: ["high", "medium", "low"] },
     },
-    required: ["company_name", "person", "confidence"],
+    required: ["people", "confidence"],
   },
 } as const;
 
-export async function extractContact(input: ExtractInput): Promise<Extracted | null> {
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+export async function extractPeople(input: ExtractInput): Promise<Extracted | null> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return null;
+  if (!apiKey || input.people.length === 0) return null;
 
   const body = (input.body ?? "").slice(0, MAX_BODY_CHARS);
+  const fmt = (p: Participant) => (p.displayName ? `${p.displayName} <${p.email}>` : p.email);
+  const byRole = (role: ParticipantRole) =>
+    input.participants.filter((p) => p.role === role).map(fmt).join(", ");
   const userText = [
-    `From (our rep): ${input.from}`,
-    `To/Cc (external contact): ${input.to.join(", ")}`,
+    `Our rep (ignore — not an external contact): ${input.rep}`,
+    `Direction: ${input.direction === "outbound" ? "sent by our rep" : "received by our rep"}`,
+    `From: ${byRole("from")}`,
+    `To: ${byRole("to")}`,
+    `Cc: ${byRole("cc")}`,
+    `Bcc: ${byRole("bcc")}`,
     `Subject: ${input.subject ?? ""}`,
+    "",
+    `Record these external people: ${input.people.join(", ")}`,
     "",
     "Email body:",
     body,
@@ -91,7 +120,7 @@ export async function extractContact(input: ExtractInput): Promise<Extracted | n
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 512,
+        max_tokens: 400 + 200 * input.people.length,
         tools: [TOOL],
         tool_choice: { type: "tool", name: TOOL.name },
         messages: [{ role: "user", content: userText }],
@@ -102,21 +131,28 @@ export async function extractContact(input: ExtractInput): Promise<Extracted | n
     const block = (data.content ?? []).find(
       (b: { type: string; name?: string }) => b.type === "tool_use" && b.name === TOOL.name,
     );
-    const out = block?.input as Extracted | undefined;
-    if (!out || typeof out !== "object") return null;
-    // Normalize shape so callers can rely on it.
-    return {
-      company_name: out.company_name ?? null,
-      person: {
-        name: out.person?.name ?? null,
-        title: out.person?.title ?? null,
-        phone: out.person?.phone ?? null,
-        linkedin: out.person?.linkedin ?? null,
-        location: out.person?.location ?? null,
-        seniority: out.person?.seniority ?? null,
-      },
-      confidence: out.confidence === "high" || out.confidence === "low" ? out.confidence : "medium",
-    };
+    const out = block?.input as { people?: unknown[]; confidence?: string } | undefined;
+    if (!out || !Array.isArray(out.people)) return null;
+
+    // Normalize shape so callers can rely on it; drop anything we didn't ask for.
+    const wanted = new Set(input.people);
+    const people = new Map<string, ExtractedPerson>();
+    for (const raw of out.people) {
+      const p = raw as Record<string, unknown>;
+      const email = str(p.email)?.toLowerCase();
+      if (!email || !wanted.has(email)) continue;
+      people.set(email, {
+        name: str(p.name),
+        title: str(p.title),
+        phone: str(p.phone),
+        linkedin: str(p.linkedin),
+        location: str(p.location),
+        seniority: str(p.seniority),
+        company_name: str(p.company_name),
+      });
+    }
+    const confidence = out.confidence === "high" || out.confidence === "low" ? out.confidence : "medium";
+    return { people, confidence };
   } catch {
     return null; // timeout / network / parse — skip this message
   } finally {

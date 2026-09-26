@@ -1,18 +1,27 @@
-// gmail-backfill: one-time historical scan of a rep's SENT mailbox to seed
-// people + companies into the review queue. Driven by the service-role bearer
-// (kicked off by gmail-scan-start, then self-chained batch-by-batch until done).
+// gmail-backfill: one-time historical scan of a rep's mailbox (sent AND
+// received) to put every external person (From/To/Cc/Bcc) onto their company's
+// profile, or into the review queue when the company is new. Driven by the
+// service-role bearer (kicked off by gmail-scan-start, then self-chained
+// batch-by-batch until done).
 //
 // A single invocation processes one bounded batch per active scan job: list the
-// next page of sent messages, fetch each in full, and file person/company
-// suggestions (dedup + extraction live in _shared/suggest.ts). The page cursor +
-// counts live on gmail_scan_jobs so the scan survives the Edge Function time
-// limit — if more pages remain we re-invoke ourselves to continue.
+// next page of messages, fetch each in full, and add/suggest the people on it
+// (dedup + extraction live in _shared/suggest.ts). The page cursor + counts live
+// on gmail_scan_jobs so the scan survives the Edge Function time limit — if more
+// pages remain we re-invoke ourselves to continue.
 import { serviceClient } from "../_shared/supabase.ts";
 import { Connection, getValidAccessToken, markSynced, requireServiceRole } from "../_shared/connections.ts";
-import { GmailMessage, loadIgnoredDomains, suggestFromSentMessage } from "../_shared/suggest.ts";
+import { GmailMessage, loadIgnoredDomains, suggestFromMessage } from "../_shared/suggest.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const BATCH = 25; // messages per job per invocation (each = list + get + extract)
+
+// All real correspondence: sent + received, minus spam/trash, chats, and the
+// Gmail tabs that are almost never a person (promotions, social, updates,
+// forums). Received newsletters that slip through are dropped by the
+// List-Unsubscribe check in suggest.ts.
+const SCAN_QUERY =
+  "in:anywhere -in:spam -in:trash -in:chats -category:promotions -category:social -category:updates -category:forums";
 
 function makeGapi(token: string) {
   return (path: string) =>
@@ -70,8 +79,8 @@ async function processJob(
   const gapi = makeGapi(token);
   const ignoredDomains = await loadIgnoredDomains(db, conn.user_id);
 
-  // List the next page of sent messages.
-  const q = new URLSearchParams({ q: "in:sent", maxResults: String(BATCH) });
+  // List the next page of messages.
+  const q = new URLSearchParams({ q: SCAN_QUERY, maxResults: String(BATCH) });
   if (job.page_token) q.set("pageToken", job.page_token);
   const listRes = await gapi(`/messages?${q.toString()}`);
   if (!listRes.ok) {
@@ -91,11 +100,9 @@ async function processJob(
     const res = await gapi(`/messages/${id}?format=full`);
     if (!res.ok) continue; // deleted / inaccessible
     const msg = (await res.json()) as GmailMessage;
-    if (!(msg.labelIds ?? []).includes("SENT")) continue; // defensive
     try {
-      if (await suggestFromSentMessage(db, conn as Connection, msg, gapi, ignoredDomains)) {
-        suggested++;
-      }
+      const r = await suggestFromMessage(db, conn as Connection, msg, gapi, ignoredDomains);
+      suggested += r.added + r.suggested;
     } catch {
       // one bad message must not abort the batch
     }

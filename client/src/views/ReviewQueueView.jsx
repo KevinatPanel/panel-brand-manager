@@ -185,7 +185,7 @@ function StageMoveCard({ sug, deals, onResolve, onOpenThread }) {
   );
 }
 
-// A company we found in your sent mail, with the people to add under it. Approve
+// A new company we found in your email, with the people to add under it. Approve
 // creates the company (or attaches to the existing one) + the checked people.
 function CompanySuggestionCard({ comp, onResolve, onOpenThread }) {
   const [selected, setSelected] = useState(() => new Set(comp.contacts.map((c) => c.id)));
@@ -407,7 +407,7 @@ export default function ReviewQueueView() {
     <>
       <ViewHeader
         title="Review Queue"
-        subtitle="New contacts you've emailed — turn them into opportunities, people, and companies"
+        subtitle="New contacts from your email — turn them into opportunities, people, and companies"
       />
       <div className="flex items-start gap-4 p-6">
         <div className="flex-1 min-w-0 max-w-2xl space-y-3">
@@ -416,8 +416,9 @@ export default function ReviewQueueView() {
             <div className="text-text-disabled text-[13px]">Loading…</div>
           ) : empty ? (
             <div className="text-text-secondary text-[13px]">
-              Nothing to review. New external contacts you email — and companies found by an inbox
-              scan — will show up here.
+              Nothing to review. New external contacts you email — and new companies found in your email
+              (To, Cc and Bcc) — will show up here. People at companies you already
+              track are added to that company automatically.
             </div>
           ) : (
             <>

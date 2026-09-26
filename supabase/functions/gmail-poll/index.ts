@@ -4,6 +4,9 @@
 // touch_log entry (deduped on Message-ID). For an OUTBOUND email to a brand-new
 // external contact (no matching deal), it creates a *pending* email_suggestion
 // — never an auto-created deal (Phase 2 review queue). No stage moves (Phase 3).
+// Every message (sent or received) also runs through the people/company engine
+// (_shared/suggest.ts): each external From/To/Cc/Bcc address lands on its
+// company's profile, or in the review queue when the company is new.
 //
 // Deal matching: (a) thread already linked in deal_email_links, or (b) an
 // external counterparty matches a lead_contacts.email whose lead is in pipeline
@@ -16,7 +19,12 @@ import {
   requireServiceRole,
 } from "../_shared/connections.ts";
 import { domainOf, externalParties, isFreeMail, parseAddress, parseAddressList } from "../_shared/match.ts";
-import { GmailMessage, loadIgnoredDomains, suggestFromSentMessage } from "../_shared/suggest.ts";
+import {
+  GmailMessage,
+  loadIgnoredDomains,
+  SUGGEST_METADATA_HEADERS,
+  suggestFromMessage,
+} from "../_shared/suggest.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const MAX_MESSAGES_PER_CONN = 100; // safety cap per run
@@ -123,7 +131,7 @@ async function resolveDeal(
 async function pollConnection(
   db: ReturnType<typeof serviceClient>,
   conn: Connection,
-): Promise<{ user: string; logged: number; personLogged?: number; suggested?: number; advanced?: number; seeded?: boolean; reauth?: boolean }> {
+): Promise<{ user: string; logged: number; personLogged?: number; suggested?: number; peopleAdded?: number; peopleSuggested?: number; advanced?: number; seeded?: boolean; reauth?: boolean }> {
   const token = await getValidAccessToken(db, conn);
   if (!token) return { user: conn.google_email, logged: 0, reauth: true };
 
@@ -175,11 +183,11 @@ async function pollConnection(
   let suggested = 0;
   let advanced = 0;
   let personLogged = 0;
+  let peopleAdded = 0;
+  let peopleSuggested = 0;
+  const metadataQuery = SUGGEST_METADATA_HEADERS.map((h) => `metadataHeaders=${h}`).join("&");
   for (const id of ids) {
-    const res = await gapi(
-      token,
-      `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID`,
-    );
+    const res = await gapi(token, `/messages/${id}?format=metadata&${metadataQuery}`);
     if (!res.ok) continue; // deleted/inaccessible — skip
     const msg = await res.json();
     const headers = msg.payload?.headers ?? [];
@@ -191,7 +199,20 @@ async function pollConnection(
     const recipients = [
       ...parseAddressList(header(headers, "To")),
       ...parseAddressList(header(headers, "Cc")),
+      ...parseAddressList(header(headers, "Bcc")), // only present on our own sent copy
     ];
+
+    // Everyone on the message (From/To/Cc/Bcc) onto their company's profile, or
+    // into the review queue for new companies. Runs first so people added here
+    // also get this message logged as a touch below.
+    try {
+      const r = await suggestFromMessage(db, conn, msg as GmailMessage, gapiBound, ignoredNormalized);
+      peopleAdded += r.added;
+      peopleSuggested += r.suggested;
+    } catch {
+      // non-fatal: touch logging + deal matching below still run
+    }
+
     const counterparties = isOutbound
       ? externalParties(recipients, conn.google_email)
       : externalParties(from ? [from] : [], conn.google_email);
@@ -255,18 +276,6 @@ async function pollConnection(
             suggestedContacts.add(primary);
             suggested++;
           }
-        }
-        // Phase 4: the same new outbound contact also seeds a person/company
-        // suggestion. Re-fetch the message in full so the extractor sees the
-        // body + signature (the metadata fetch above has no body).
-        try {
-          const fullRes = await gapi(token, `/messages/${id}?format=full`);
-          if (fullRes.ok) {
-            const fullMsg = (await fullRes.json()) as GmailMessage;
-            await suggestFromSentMessage(db, conn, fullMsg, gapiBound, ignoredNormalized);
-          }
-        } catch {
-          // non-fatal: deal suggestion above still stands
         }
       }
       continue;
@@ -345,7 +354,7 @@ async function pollConnection(
     })
     .eq("user_id", conn.user_id);
 
-  return { user: conn.google_email, logged, personLogged, suggested, advanced };
+  return { user: conn.google_email, logged, personLogged, suggested, peopleAdded, peopleSuggested, advanced };
 }
 
 Deno.serve(async (req) => {
