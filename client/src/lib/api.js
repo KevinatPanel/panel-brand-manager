@@ -952,6 +952,11 @@ export const api = {
     const patch = { updated_at: nowIso() };
     if (body.company_name !== undefined) patch.company_name = String(body.company_name).trim();
     if (body.website !== undefined) patch.website = body.website;
+    // A person picking a vertical (Unsorted included) is final: auto-sort
+    // (lib/autoSort.js) never moves a company marked manual.
+    const verticalMark = body.vertical_id !== undefined
+      ? { vertical_source: 'manual', vertical_reason: null, vertical_checked_at: nowIso() }
+      : null;
     if (body.vertical_id !== undefined) patch.vertical_id = body.vertical_id;
     if (body.hq_location !== undefined) patch.hq_location = body.hq_location;
     if (body.headcount !== undefined) patch.headcount = body.headcount;
@@ -978,7 +983,11 @@ export const api = {
         ? String(body.everflow_quality_event_name).trim()
         : null;
     }
-    unwrap(await supabase.from('leads').update(patch).eq('id', id));
+    const res = await supabase.from('leads').update(verticalMark ? { ...patch, ...verticalMark } : patch).eq('id', id);
+    // Before migration 0054 the marker columns don't exist: save without them.
+    if (res.error && verticalMark && ['42703', 'PGRST204'].includes(res.error.code)) {
+      unwrap(await supabase.from('leads').update(patch).eq('id', id));
+    } else unwrap(res);
     return leadSummaryById(id);
   },
 

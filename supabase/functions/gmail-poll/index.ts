@@ -11,6 +11,7 @@
 // Deal matching: (a) thread already linked in deal_email_links, or (b) an
 // external counterparty matches a lead_contacts.email whose lead is in pipeline
 // (also records a deal_email_links row so the thread matches directly next time).
+import { type CompanyIndex, fillCompanyDomain, loadCompanyIndex, matchCompany } from "../_shared/companyMatch.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 import {
   Connection,
@@ -18,7 +19,7 @@ import {
   markSynced,
   requireServiceRole,
 } from "../_shared/connections.ts";
-import { domainOf, externalParties, isFreeMail, parseAddress, parseAddressList } from "../_shared/match.ts";
+import { domainOf, externalParties, isFreeMail, isRoleAddress, parseAddress, parseAddressList } from "../_shared/match.ts";
 import {
   GmailMessage,
   loadIgnoredDomains,
@@ -97,6 +98,7 @@ async function resolveDeal(
   db: ReturnType<typeof serviceClient>,
   threadId: string,
   counterparties: string[],
+  companies: CompanyIndex,
 ): Promise<{ dealId: number; matchedEmail: string | null } | null> {
   // (a) thread already linked
   const linked = await db
@@ -123,6 +125,19 @@ async function resolveDeal(
       .maybeSingle();
     if (lead.data?.in_pipeline && lead.data.deal_id) {
       return { dealId: lead.data.deal_id, matchedEmail: email };
+    }
+  }
+
+  // (c) counterparty's company (by domain, or by the company name in the
+  // address) already has a deal: file the thread there rather than queueing
+  // "you emailed a new contact" for a brand that's already in the pipeline.
+  for (const email of counterparties) {
+    if (isFreeMail(email) || isRoleAddress(email)) continue;
+    const domain = domainOf(email);
+    const hit = matchCompany(companies, domain);
+    if (hit?.lead.deal_id) {
+      await fillCompanyDomain(db, hit.lead, domain);
+      return { dealId: hit.lead.deal_id, matchedEmail: email };
     }
   }
   return null;
@@ -175,6 +190,7 @@ async function pollConnection(
   );
   // Normalized ignore set for the people/company suggestion path (Phase 4).
   const ignoredNormalized = await loadIgnoredDomains(db, conn.user_id);
+  const companies = await loadCompanyIndex(db);
   const gapiBound = (path: string) => gapi(token, path);
 
   const ownerName = ownerFromEmail(conn.google_email);
@@ -206,7 +222,7 @@ async function pollConnection(
     // into the review queue for new companies. Runs first so people added here
     // also get this message logged as a touch below.
     try {
-      const r = await suggestFromMessage(db, conn, msg as GmailMessage, gapiBound, ignoredNormalized);
+      const r = await suggestFromMessage(db, conn, msg as GmailMessage, gapiBound, ignoredNormalized, companies);
       peopleAdded += r.added;
       peopleSuggested += r.suggested;
     } catch {
@@ -250,15 +266,16 @@ async function pollConnection(
       }
     }
 
-    const match = await resolveDeal(db, threadId, counterparties);
+    const match = await resolveDeal(db, threadId, counterparties, companies);
     if (!match) {
       // Phase 2: an outbound email to a brand-new external contact becomes a
       // *pending suggestion* (never an auto-created deal). Skip free-mail,
-      // ignored domains, and contacts we've already surfaced.
+      // no-reply and help desk inboxes, ignored domains, and contacts we've
+      // already surfaced.
       if (isOutbound) {
         const primary = counterparties[0];
         const dom = domainOf(primary);
-        if (!isFreeMail(primary) && !ignoredDomains.has(dom) && !suggestedContacts.has(primary)) {
+        if (!isFreeMail(primary) && !isRoleAddress(primary) && !ignoredDomains.has(dom) && !suggestedContacts.has(primary)) {
           const ins = await db.from("email_suggestions").upsert(
             {
               user_id: conn.user_id,
@@ -313,7 +330,8 @@ async function pollConnection(
 
     // Phase 3: an inbound reply on an S1 deal means the conversation is open.
     // Auto-advance S1->S2 if the rep opted in, else file a stage-move suggestion.
-    if (!isOutbound) {
+    // Bounces, auto-replies and help desk tickets aren't the brand replying.
+    if (!isOutbound && !isRoleAddress(counterparties[0])) {
       const dealRow = await db
         .from("deals")
         .select("current_stage")

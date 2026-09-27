@@ -61,6 +61,8 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0050 | `0050_call_insights_tactiq.sql` | `call_insights` rows can come from Tactiq (no file): nullable `attachment_id`, `source`, `tactiq_meeting_id` (unique), `title`, `source_url` |
 | 0051 | `0051_call_insights_analysis.sql` | `call_insights.pushback` (themed objections), `decision_layers`, `profile` (buyer-profile checks) for the Calls charts |
 | 0052 | `0052_deal_milestones.sql` | `deal_milestones` — per-deal first email, paper, live and status note (from email), for the Calls timelines |
+| 0053 | `0053_playbook.sql` | Sales playbook: `deal_economics`, `lead_qualifier`, `ad_library_checks`, `client_programs`, `playbook_entries` |
+| 0054 | `0054_vertical_autosort.sql` | `leads.vertical_source` (manual / rules / ai), `vertical_reason`, `vertical_checked_at` for auto-sorting companies into verticals |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number
