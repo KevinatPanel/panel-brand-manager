@@ -364,6 +364,7 @@ export default function ReviewQueueView() {
   const [companies, setCompanies] = useState(null);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null); // { threadId, title } | null
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -382,6 +383,16 @@ export default function ReviewQueueView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Manual refresh: re-pull the queue and the sidebar badge count.
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(), refreshInbox()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshInbox]);
 
   // Drop a resolved deal card immediately, then refresh the nav badge.
   const onResolve = useCallback(
@@ -408,7 +419,15 @@ export default function ReviewQueueView() {
       <ViewHeader
         title="Review Queue"
         subtitle="New contacts from your email — turn them into opportunities, people, and companies"
-      />
+      >
+        <IconButton
+          icon="sync"
+          disabled={refreshing}
+          title={refreshing ? 'Refreshing…' : 'Refresh'}
+          aria-label="Refresh review queue"
+          onClick={refresh}
+        />
+      </ViewHeader>
       <div className="flex items-start gap-4 p-6">
         <div className="flex-1 min-w-0 max-w-2xl space-y-3">
           {error && <div className="text-red-400 text-[13px]">{error}</div>}
