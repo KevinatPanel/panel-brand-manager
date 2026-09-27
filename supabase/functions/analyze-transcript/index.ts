@@ -24,6 +24,15 @@ const MODEL = "claude-opus-5";
 // Panel's side of every call (mirrors OWNERS in client lib/stages.js).
 const TEAM = ["Raven", "Tom", "Andrew", "Kevin"];
 
+// What a brand's pushback is about — the columns of the Calls view's heatmap.
+const THEMES = ["quality", "control", "mechanics", "scripts", "proof", "price", "supply", "tracking", "launch"] as const;
+const THEME_GUIDE =
+  "quality: user quality, retention, fraud, LTV. control: approval over creators or content, brand safety. " +
+  "mechanics: how the model works, who pays whom, how Panel makes money. scripts: scripts, authenticity, creative. " +
+  "proof: case studies, examples, other clients. price: CPA, payout, budget, fees. " +
+  "supply: creator pool, niche, geography, audience fit. tracking: attribution, MMP, postbacks, reporting. " +
+  "launch: contracts, legal, compliance, timelines, setup.";
+
 const CallSchema = z.object({
   call_date: z.string().nullable().describe("Date of the call as YYYY-MM-DD, only if stated in the transcript."),
   brand_side: z.string().nullable().describe("Brand-side attendees, e.g. 'Harrison, head of marketing; Brian'."),
@@ -41,9 +50,22 @@ const CallSchema = z.object({
     task: z.string().describe("The concrete thing to do."),
     due: z.string().nullable().describe("When, if a date or timeframe was said."),
   })).describe("Every follow-up someone committed to on the call."),
-  objections: z.array(z.string()).describe(
-    "One line per objection, concern or hard question the brand raised, close to their own words.",
+  pushback: z.array(z.object({
+    theme: z.enum(THEMES).describe(THEME_GUIDE),
+    text: z.string().describe("The objection or hard question, close to the brand's own words."),
+  })).describe("One entry per objection, concern or hard question the brand raised."),
+  decision_layers: z.array(z.string()).describe(
+    "People or teams the brand said must sign off between this call and a signature, e.g. 'legal', 'manager', 'founder', 'agency', 'IT'.",
   ),
+  profile: z.object({
+    kpi_owner_on_call: z.boolean().nullable().describe("Someone accountable for a cost-per-user KPI was on the call."),
+    named_flat_fee_pain: z.boolean().nullable().describe("The brand described flat-fee creator spend as a problem in their own words."),
+    can_sign_alone: z.boolean().nullable().describe("The brand-side person can approve the deal without anyone else."),
+    cheap_frequent_event: z.boolean().nullable().describe("The brand has a cheap, frequent event to pay on (signup, install, onboard)."),
+    tracking_ready: z.boolean().nullable().describe("Their tracking stack (MMP, affiliate platform, postbacks) can report that event."),
+    ok_with_ad_approval: z.boolean().nullable().describe("They're fine approving at the ad level rather than vetting every creator first."),
+    supply_restriction: z.boolean().nullable().describe("They restrict which creators can work on it (geography, niche, look, audience)."),
+  }).describe("Buyer profile checks: true or false only when the call establishes it, otherwise null."),
   buy_in_quote: z.string().nullable().describe("The brand's own words at the moment they bought in, verbatim if possible."),
   buy_in_at: z.string().nullable().describe("Timestamp of that moment in the call, e.g. '27:11', if the transcript has timestamps."),
   buy_in_before: z.string().nullable().describe("What was said or shown right before the buy-in."),
@@ -166,7 +188,11 @@ async function analyze(db: Db, att: Attachment): Promise<void> {
     summary: out.summary,
     next_step: out.next_step,
     action_items: out.action_items,
-    objections: out.objections,
+    objections: out.pushback.map((p) => p.text),
+    pushback: out.pushback,
+    decision_layers: out.decision_layers,
+    // Keep only the checks the call actually established.
+    profile: Object.fromEntries(Object.entries(out.profile).filter(([, v]) => v != null)),
     buy_in_quote: out.buy_in_quote,
     buy_in_at: out.buy_in_at,
     buy_in_before: out.buy_in_before,

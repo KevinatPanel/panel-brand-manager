@@ -59,6 +59,8 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0048 | `0048_deal_snooze.sql` | `deals.snoozed_until` + `snooze_note` (park a deal until a date; excluded from the weighted total while snoozed); recreates `deal_summaries` |
 | 0049 | `0049_call_insights.sql` | `call_insights` table — per-transcript call data (sides, minutes, questions, objections, buy-in, payout, action items) filled by the `analyze-transcript` Edge Function |
 | 0050 | `0050_call_insights_tactiq.sql` | `call_insights` rows can come from Tactiq (no file): nullable `attachment_id`, `source`, `tactiq_meeting_id` (unique), `title`, `source_url` |
+| 0051 | `0051_call_insights_analysis.sql` | `call_insights.pushback` (themed objections), `decision_layers`, `profile` (buyer-profile checks) for the Calls charts |
+| 0052 | `0052_deal_milestones.sql` | `deal_milestones` — per-deal first email, paper, live and status note (from email), for the Calls timelines |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number
