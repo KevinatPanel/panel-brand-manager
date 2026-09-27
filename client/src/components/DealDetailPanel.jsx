@@ -11,6 +11,7 @@ import StageActions from './deal/StageActions.jsx';
 import TouchLog from './deal/TouchLog.jsx';
 import NotesSection from './deal/NotesSection.jsx';
 import CompanyIntel from './company/CompanyIntel.jsx';
+import EconomicsSection from './playbook/EconomicsSection.jsx';
 import { fmtDate, toDateInput } from '../lib/dates.js';
 import { gmail } from '../lib/gmail.js';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -139,6 +140,9 @@ export default function DealDetailPanel() {
               />
             </Field>
           </div>
+
+          {/* Deal economics — eCPM zone, bid range, fair payout (0053). */}
+          <EconomicsSection deal={deal} onChange={refresh} />
 
           {/* Notes — timestamped + author-stamped (see NoteEditor: author is
               derived from the signed-in user, not picked). */}

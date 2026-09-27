@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { shortLabel, relativeTime } from '../lib/leads.js';
+import { QualifierChip } from './playbook/QualifierSection.jsx';
 
 // Horizontal lead card for the board. Draggable so it can be dropped onto a
 // vertical in the side nav to re-categorize the company.
 // Layout L→R: rank | name + website + completion bar + signal chips | score + updated.
-export default function LeadCard({ lead, rank, onClick }) {
+export default function LeadCard({ lead, rank, qualifier, onClick }) {
   const completionPct = Math.round((lead.completion ?? 0) * 100);
   const [dragging, setDragging] = useState(false);
 
@@ -33,6 +34,7 @@ export default function LeadCard({ lead, rank, onClick }) {
           <span className="text-text-primary font-semibold text-[14px] truncate">
             {lead.company_name}
           </span>
+          <QualifierChip result={qualifier} className="shrink-0" />
           {lead.in_pipeline && (
             <span className="eyebrow text-signal border border-signal/40 px-1.5 py-0.5 flex items-center gap-1 shrink-0">
               <span className="w-1.5 h-1.5 bg-signal inline-block" />

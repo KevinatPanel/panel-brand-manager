@@ -76,5 +76,16 @@ export function buildLeadSummary(lead, configs, signalMap, contactCount) {
     top_signals: topSignals(configs, signalMap),
     created_at: lead.created_at,
     updated_at: lead.updated_at,
+    // For the pre-call qualifier on the Companies list (lib/qualifier.js).
+    industry: lead.industry ?? null,
+    headcount: lead.headcount ?? null,
+    apollo_lite: lead.apollo_funding !== undefined
+      ? {
+          latest_funding_stage: lead.apollo_funding,
+          latest_funding_round_date: lead.apollo_funding_date,
+          estimated_num_employees: lead.apollo_employees,
+          publicly_traded_symbol: lead.apollo_public,
+        }
+      : null,
   };
 }

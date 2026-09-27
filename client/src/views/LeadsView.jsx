@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLeads } from '../state/LeadsContext.jsx';
 import { api } from '../lib/api.js';
+import { playbook } from '../lib/playbookApi.js';
 import ViewHeader from '../components/ViewHeader.jsx';
 import { Button } from '../components/ui.jsx';
 import LeadGroup from '../components/LeadGroup.jsx';
@@ -15,6 +16,14 @@ import FindDuplicatesModal from '../components/FindDuplicatesModal.jsx';
 // globally; opening one navigates to its full-page company view.
 export default function LeadsView() {
   const { leads, verticals, loading, error, refresh, openLead } = useLeads();
+  // Pre-call qualifier labels (lib/qualifier.js): manual inputs + the latest
+  // Ad Library check per company, both 0053. Empty until that's applied.
+  const [qualifierData, setQualifierData] = useState({ manual: {}, adChecks: {} });
+  useEffect(() => {
+    Promise.all([playbook.listQualifiers(), playbook.latestAdChecks()])
+      .then(([rows, adChecks]) => setQualifierData({ manual: Object.fromEntries(rows.map((r) => [r.lead_id, r])), adChecks }))
+      .catch(() => {});
+  }, [leads]);
   const [adding, setAdding] = useState(false);
   const [findingDupes, setFindingDupes] = useState(false);
   // Per-group open overrides (id -> bool). When a group has no override it falls
@@ -195,6 +204,7 @@ export default function LeadsView() {
                   open={isOpen(g)}
                   onToggle={() => toggleGroup(g)}
                   onCardClick={openLead}
+                  qualifierData={qualifierData}
                 />
               ))}
             </div>

@@ -9,6 +9,7 @@ import StageActions from '../components/deal/StageActions.jsx';
 import StakeholdersSection from '../components/deal/StakeholdersSection.jsx';
 import TasksSection from '../components/deal/TasksSection.jsx';
 import NotesSection from '../components/deal/NotesSection.jsx';
+import EconomicsSection from '../components/playbook/EconomicsSection.jsx';
 import AttachmentsSection from '../components/deal/AttachmentsSection.jsx';
 import ActivityTimeline from '../components/deal/ActivityTimeline.jsx';
 
@@ -153,6 +154,10 @@ export default function DealView() {
               <Eyebrow className="mb-3">Overview</Eyebrow>
               <DealOverviewFields deal={deal} patch={patch} />
             </section>
+
+            <div className="border border-hairline">
+              <EconomicsSection deal={deal} />
+            </div>
 
             <StakeholdersSection dealId={id} />
 

@@ -837,7 +837,11 @@ export const api = {
       await supabase
         .from('leads')
         .select(
-          'id, company_name, website, vertical_id, score, score_updated_at, in_pipeline, is_client, deal_id, created_at, updated_at, vertical:verticals(name)',
+          'id, company_name, website, vertical_id, score, score_updated_at, in_pipeline, is_client, deal_id, created_at, updated_at, vertical:verticals(name), ' +
+            // Just the Apollo fields the pre-call qualifier reads (lib/qualifier.js),
+            // not the whole raw record.
+            'industry, headcount, apollo_funding:apollo_raw->>latest_funding_stage, apollo_funding_date:apollo_raw->>latest_funding_round_date, ' +
+            'apollo_employees:apollo_raw->>estimated_num_employees, apollo_public:apollo_raw->>publicly_traded_symbol',
         )
         .order('score', { ascending: false }),
     );
@@ -889,6 +893,7 @@ export const api = {
       enriched_source: lead.enriched_source ?? null,
       everflow_advertiser_id: lead.everflow_advertiser_id ?? null,
       everflow_quality_event_name: lead.everflow_quality_event_name ?? null,
+      apollo_raw: lead.apollo_raw ?? null,
       signals: signalMap,
       contacts,
       points: breakdown,
@@ -1090,7 +1095,7 @@ export const api = {
 
   updateContact: async (id, contactId, body = {}) => {
     const patch = {};
-    for (const k of ['name', 'title', 'linkedin', 'email', 'phone', 'location', 'seniority', 'notes']) {
+    for (const k of ['name', 'title', 'linkedin', 'email', 'phone', 'location', 'seniority', 'notes', 'buyer_tier']) {
       if (body[k] !== undefined) patch[k] = body[k] === '' ? null : body[k];
     }
     unwrap(
@@ -1184,7 +1189,8 @@ export const api = {
     const rows = unwrap(
       await supabase
         .from('lead_contacts')
-        .select('id, lead_id, name, title, email, location, seniority, linkedin, lead:leads(id, company_name, vertical_id)')
+        // '*' rather than a column list so buyer_tier (0053) comes through once it exists
+        .select('*, lead:leads(id, company_name, vertical_id)')
         .order('id', { ascending: false }),
     );
     const touches = unwrap(await supabase.from('contact_touches').select('contact_id,touch_date'));

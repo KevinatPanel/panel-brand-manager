@@ -10,6 +10,9 @@ import AdTrackerSection from './AdTrackerSection.jsx';
 import SpendGoalWidget from './SpendGoalWidget.jsx';
 import QualityMetricWidget from './QualityMetricWidget.jsx';
 import OffersWidget from './OffersWidget.jsx';
+import QualifierSection from './playbook/QualifierSection.jsx';
+import AdLibrarySection from './playbook/AdLibrarySection.jsx';
+import { TierChip, TierSelect, ThreadStatus } from './playbook/BuyerTier.jsx';
 import ScoreBadge from './company/ScoreBadge.jsx';
 import EnrichmentSection from './company/EnrichmentSection.jsx';
 import SignalsSection from './company/SignalsSection.jsx';
@@ -30,6 +33,8 @@ export default function CompanyProfile({ leadId, onDeleted }) {
   const [busy, setBusy] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // Latest Meta Ad Library check, shared from AdLibrarySection to the qualifier.
+  const [adCheck, setAdCheck] = useState(null);
   const [mergeCompanies, setMergeCompanies] = useState([]);
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [mergeError, setMergeError] = useState(null);
@@ -162,6 +167,10 @@ export default function CompanyProfile({ leadId, onDeleted }) {
 
               {/* Signals */}
               <SignalsSection lead={lead} config={config} after={after} />
+
+              {/* Pre-call qualifier + Meta Ad Library check (0053). */}
+              <QualifierSection lead={lead} adCheck={adCheck} />
+              <AdLibrarySection lead={lead} onLatest={setAdCheck} />
 
               {/* Footer — client flag, Start Outreach + remove lead */}
               <div className="px-5 py-4 border-t border-hairline space-y-3">
@@ -446,7 +455,10 @@ function ContactsSection({ lead, busy, after }) {
   return (
     <div className="px-5 py-4 border-t border-hairline">
       <div className="flex items-center justify-between mb-3">
-        <Eyebrow>Contacts</Eyebrow>
+        <div className="flex items-baseline gap-3">
+          <Eyebrow>Contacts</Eyebrow>
+          {lead.contacts.length > 0 && <ThreadStatus contacts={lead.contacts} />}
+        </div>
         <Button variant="ghost" onClick={() => setAdding((a) => !a)}>+ Add Contact</Button>
       </div>
 
@@ -492,6 +504,7 @@ function ContactRow({ lead, contact, busy, after }) {
         <Input defaultValue={contact.title ?? ''} onBlur={(e) => save({ title: e.target.value })} placeholder="Title" />
         <Input defaultValue={contact.email ?? ''} onBlur={(e) => save({ email: e.target.value })} placeholder="Email" type="email" />
         <Input defaultValue={contact.linkedin ?? ''} onBlur={(e) => save({ linkedin: e.target.value })} placeholder="LinkedIn URL" />
+        <TierSelect contact={contact} disabled={busy} onChange={(v) => save({ buyer_tier: v })} />
         <div className="flex justify-end">
           <Button type="button" variant="ghost" onClick={() => setEditing(false)}>Done</Button>
         </div>
@@ -502,7 +515,10 @@ function ContactRow({ lead, contact, busy, after }) {
   return (
     <div className="flex items-center justify-between border-b border-hairline pb-2">
       <div className="min-w-0">
-        <div className="text-text-primary text-[13px] truncate">{contact.name}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-text-primary text-[13px] truncate">{contact.name}</span>
+          <TierChip contact={contact} className="shrink-0" />
+        </div>
         {contact.title && <div className="text-text-secondary text-[12px] truncate">{contact.title}</div>}
         {contact.email && (
           <a
