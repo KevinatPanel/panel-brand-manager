@@ -64,8 +64,8 @@ function AutoAdvanceToggle({ initial }) {
 // instead of spinning forever. A live batch checkpoints well inside this window.
 const SCAN_STALE_MS = 90_000;
 
-// One-time inbox scan: walks your sent mail to propose people + companies into
-// the Review Queue. Shows live progress; on success/failure/stall it always
+// One-time inbox scan: walks your sent + received mail and puts everyone on
+// To/Cc/Bcc onto their company's profile (new companies go to the Review Queue). Shows live progress; on success/failure/stall it always
 // returns to a clickable state with a message.
 function ScanInboxSection() {
   const [job, setJob] = useState(null);
@@ -125,7 +125,7 @@ function ScanInboxSection() {
         ? `Last scan: ${job.processed_count} emails · ${job.suggested_count} suggestions`
         : inProgress
           ? `Scanning… ${job.processed_count} emails · ${job.suggested_count} found`
-          : 'Scan your sent mail to find people and companies to add.';
+          : 'Scan your email to add everyone you correspond with (To, Cc, Bcc) to their company.';
 
   return (
     <div className="mt-4 pt-4 border-t border-hairline flex items-center justify-between gap-4">
