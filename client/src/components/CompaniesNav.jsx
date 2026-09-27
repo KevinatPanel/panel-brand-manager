@@ -14,6 +14,8 @@ export default function CompaniesNav({
   onRenameVertical,
   onDeleteVertical,
   onReorderVertical,
+  sortStatus,
+  onAutoSort,
 }) {
   // Which verticals are expanded *within the nav* — independent of the board's
   // own open/closed state.
@@ -121,7 +123,28 @@ export default function CompaniesNav({
     <aside className="shrink-0 sticky top-16 h-[calc(100vh-4rem)] w-56 bg-space border-r border-hairline flex flex-col">
       {/* Label sits inside the sidebar — the full-width top bar is above us. */}
       <div className="px-5 pt-4 pb-2">
-        <Eyebrow className="text-text-muted">Verticals</Eyebrow>
+        <div className="flex items-center justify-between">
+          <Eyebrow className="text-text-muted">Verticals</Eyebrow>
+          {onAutoSort && (
+            <button
+              onClick={onAutoSort}
+              disabled={sortStatus?.running}
+              title="Sort every unsorted company into a vertical: keyword rules first, then Claude. Companies you placed by hand stay put."
+              className="eyebrow text-text-muted hover:text-signal disabled:text-text-disabled"
+            >
+              {sortStatus?.running ? 'Sorting…' : 'Auto-sort'}
+            </button>
+          )}
+        </div>
+        {sortStatus?.text && (
+          <p
+            className={`mt-1.5 text-[11px] leading-snug ${
+              sortStatus.tone === 'error' ? 'text-red-400' : sortStatus.tone === 'warn' ? 'text-amber-300' : 'text-text-muted'
+            }`}
+          >
+            {sortStatus.text}
+          </p>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto pb-2">

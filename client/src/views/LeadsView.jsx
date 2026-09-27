@@ -10,6 +10,10 @@ import CompaniesNav from '../components/CompaniesNav.jsx';
 import AddLeadModal from '../components/AddLeadModal.jsx';
 import EnrichAllButton from '../components/EnrichAllButton.jsx';
 import FindDuplicatesModal from '../components/FindDuplicatesModal.jsx';
+import { sortByRules, sortWithClaude } from '../lib/autoSort.js';
+
+// Auto-sort runs on its own once per app session; the nav button reruns it.
+let autoSortStarted = false;
 
 // Lead Intelligence Board — vertical groups of scored, ranked lead cards.
 // LeadsProvider is mounted app-wide (see App.jsx) so leads are searchable
@@ -77,6 +81,53 @@ export default function LeadsView() {
     jumpToVertical(groupId);
     openLead(leadId);
   };
+
+  // Auto-sort: keyword rules, then Claude, into the existing verticals.
+  const [sortStatus, setSortStatus] = useState(null); // { running, text, tone }
+  const runAutoSort = useCallback(
+    async ({ recheck = false } = {}) => {
+      setSortStatus({ running: true, text: 'Sorting by keywords…' });
+      try {
+        const rules = await sortByRules(verticals);
+        if (rules.placed) await refresh();
+        let claude = { placed: 0, created: [], skipped: 0 };
+        if (rules.left > 0 || recheck) {
+          setSortStatus({ running: true, text: `${rules.placed} sorted by keywords. Claude is sorting the rest…` });
+          claude = await sortWithClaude({
+            recheck,
+            onProgress: async (p) => {
+              setSortStatus({ running: true, text: `${rules.placed + p.placed} sorted so far. Claude is still going…` });
+              await refresh();
+            },
+          });
+        }
+        const placed = rules.placed + claude.placed;
+        const parts = [placed ? `${placed} companies sorted` : 'Nothing new to sort'];
+        if (claude.created.length) parts.push(`new: ${claude.created.join(', ')}`);
+        if (claude.skipped) parts.push(`${claude.skipped} Claude couldn't identify stay in Unsorted`);
+        let tone = 'ok';
+        if (claude.unavailable) {
+          tone = 'warn';
+          parts.push(
+            claude.unavailable === 'not deployed'
+              ? 'Claude sorting turns on once the classify-verticals function is deployed'
+              : `Claude sorting failed: ${claude.unavailable}`,
+          );
+        }
+        setSortStatus({ running: false, text: parts.join(' · '), tone });
+        await refresh();
+      } catch (e) {
+        setSortStatus({ running: false, text: e.message, tone: 'error' });
+      }
+    },
+    [verticals, refresh],
+  );
+  const hasUnsorted = leads.some((l) => l.vertical_id == null);
+  useEffect(() => {
+    if (loading || autoSortStarted || !verticals.length || !hasUnsorted) return;
+    autoSortStarted = true;
+    runAutoSort();
+  }, [loading, verticals, hasUnsorted, runAutoSort]);
 
   // Drag a company card onto a vertical in the side nav to re-categorize it.
   // verticalId is null when dropped on "Unsorted" (un-categorize).
@@ -186,6 +237,8 @@ export default function LeadsView() {
           onRenameVertical={renameVertical}
           onDeleteVertical={deleteVertical}
           onReorderVertical={reorderVertical}
+          sortStatus={sortStatus}
+          onAutoSort={() => runAutoSort({ recheck: true })}
         />
 
         <div className="flex-1 min-w-0">
