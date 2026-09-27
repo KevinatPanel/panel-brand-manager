@@ -9,10 +9,10 @@ create table public.deal_milestones (
   deal_id        bigint primary key references public.deals(id) on delete cascade,
   first_email_at date,
   paper_at       date,
-  paper_note     text,        -- e.g. "MSA signed and countersigned Sept 22"
+  paper_note     text,        -- e.g. "MSA signed and countersigned"
   live_at        date,
   live_note      text,        -- e.g. "first ad approved and live"
-  status_note    text,        -- e.g. "Postback blocking launch"
+  status_note    text,        -- e.g. "Waiting on postback setup"
   source         text,        -- email-agent | import | manual
   updated_at     timestamptz not null default now()
 );

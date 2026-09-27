@@ -80,9 +80,9 @@ STEP 5: Email milestones. The deals to check: every deal you wrote a call for in
 select distinct ci.deal_id from call_insights ci left join deal_milestones m on m.deal_id = ci.deal_id where ci.result = 'yes' and m.live_at is null;
 For each, get the brand's domain and contact emails (leads.domain, lead_contacts.email via deals.lead_id) and read the Gmail threads with them (search by the domain, e.g. "@brand.com", oldest first). Find:
 - first_email_at: the date of the first email Panel sent to anyone at the brand.
-- paper_at and paper_note: the date the paper was done (MSA or NDA signed and countersigned, a DocuSign or similar "completed" notice, or Impact contract terms accepted) and one line saying which. If paper is in progress but not done, leave paper_at null and put the state in paper_note, e.g. "MSA in redlines since Sept 4".
+- paper_at and paper_note: the date the paper was done (MSA or NDA signed and countersigned, a DocuSign or similar "completed" notice, or Impact contract terms accepted) and one line saying which. If paper is in progress but not done, leave paper_at null and put the state in paper_note, e.g. "MSA in redlines".
 - live_at and live_note: the date the brand went live (the first ad approved and running, or the first creative in the portal) and one line saying which.
-- status_note: one line on where the deal stands now, from the latest thread, e.g. "Postback blocking launch".
+- status_note: one line on where the deal stands now, from the latest thread, e.g. "Waiting on postback setup".
 Write only what the emails show. Then upsert, never replacing a date that's already set (an earlier first email wins; paper and live keep their first value):
 insert into deal_milestones (deal_id, first_email_at, paper_at, paper_note, live_at, live_note, status_note, source, updated_at)
 values (<deal_id>, <date or NULL>, <date or NULL>, $q$<note>$q$ or NULL, <date or NULL>, $q$<note>$q$ or NULL, $q$<status>$q$ or NULL, 'email-agent', now())
