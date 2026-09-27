@@ -179,10 +179,25 @@ function CallDetail({ row, onAnalyze, onOpenFile }) {
         )}
         <DetailList label="What they pushed on" items={ins?.objections} />
         <div className="flex items-center gap-3 pt-1">
-          <button onClick={() => onOpenFile(row)} className="text-text-secondary hover:text-signal text-[12px] truncate">
-            {row.filename}
-          </button>
-          <Button variant="ghost" onClick={() => onAnalyze(row.id)}>Re-analyze</Button>
+          {row.source === 'tactiq' ? (
+            ins?.source_url && (
+              <a
+                href={ins.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-secondary hover:text-signal text-[12px] truncate"
+              >
+                Open in Tactiq · {row.filename}
+              </a>
+            )
+          ) : (
+            <>
+              <button onClick={() => onOpenFile(row)} className="text-text-secondary hover:text-signal text-[12px] truncate">
+                {row.filename}
+              </button>
+              <Button variant="ghost" onClick={() => onAnalyze(row.id)}>Re-analyze</Button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -192,6 +207,7 @@ function CallDetail({ row, onAnalyze, onOpenFile }) {
 export default function CallsView() {
   const { deals, openDeal } = useDeals();
   const [rows, setRows] = useState(null);
+  const [setupPending, setSetupPending] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -203,10 +219,13 @@ export default function CallsView() {
 
   const load = useCallback(async () => {
     try {
-      setRows(await api.listCalls());
+      const res = await api.listCalls();
+      setRows(res.calls);
+      setSetupPending(res.setupPending);
       setError(null);
     } catch (e) {
       setError(e.message);
+      setRows((cur) => cur ?? []); // don't leave the page stuck on "Loading…"
     }
   }, []);
 
@@ -269,7 +288,9 @@ export default function CallsView() {
     [load],
   );
 
-  const toAnalyze = calls.filter((c) => c.state === 'none' || c.state === 'error' || c.state === 'stalled');
+  const toAnalyze = calls.filter(
+    (c) => c.id != null && (c.state === 'none' || c.state === 'error' || c.state === 'stalled'),
+  );
   async function analyzeAll() {
     setStarting(true);
     try {
@@ -339,7 +360,7 @@ export default function CallsView() {
   return (
     <div>
       <ViewHeader title="Calls" subtitle="Every brand call, straight from the meeting transcripts">
-        {toAnalyze.length > 0 && (
+        {toAnalyze.length > 0 && !setupPending && (
           <Button variant="primary" disabled={starting} onClick={analyzeAll}>
             {starting ? 'Starting…' : `Analyze ${toAnalyze.length} transcript${toAnalyze.length === 1 ? '' : 's'}`}
           </Button>
@@ -354,13 +375,21 @@ export default function CallsView() {
       </ViewHeader>
 
       {error && <div className="px-6 pt-4 text-red-400 text-[13px]">{error}</div>}
+      {setupPending && (
+        <div className="mx-6 mt-4 px-4 py-3 border border-hairline text-text-secondary text-[13px] max-w-3xl">
+          Call data isn’t switched on yet: the database update for this page (migrations 0049 and
+          0050) still needs to be applied in Supabase. Your transcripts are listed below and will be
+          read once it’s done.
+        </div>
+      )}
 
       {loading ? (
         <div className="px-6 py-10 text-text-secondary text-[13px]">Loading…</div>
       ) : calls.length === 0 ? (
         <div className="px-6 py-10 text-text-secondary text-[13px] max-w-xl">
-          No transcripts yet. Upload a meeting transcript from a deal on the Meetings page and it
-          shows up here as a row of call data a minute or two later.
+          No calls yet. Brand calls recorded in Tactiq are added here automatically each weekday
+          evening, and a transcript uploaded from a deal on the Meetings page shows up a minute or
+          two after upload.
         </div>
       ) : (
         <>
@@ -429,16 +458,17 @@ export default function CallsView() {
               </thead>
               <tbody>
                 {sortedCalls.map((c) => {
-                  const open = expanded === c.id;
+                  const open = expanded === c.key;
                   return (
                     <CallRows
-                      key={c.id}
+                      key={c.key}
                       call={c}
                       open={open}
-                      onToggle={() => setExpanded(open ? null : c.id)}
+                      onToggle={() => setExpanded(open ? null : c.key)}
                       onAnalyze={analyze}
                       onOpenFile={openFile}
                       onOpenDeal={openDeal}
+                      canAnalyze={!setupPending}
                     />
                   );
                 })}
@@ -486,7 +516,7 @@ export default function CallsView() {
 
 // One call: the summary row, plus its detail row when expanded. Rows that
 // aren't analyzed yet show where the analysis stands instead of data.
-function CallRows({ call, open, onToggle, onAnalyze, onOpenFile, onOpenDeal }) {
+function CallRows({ call, open, onToggle, onAnalyze, onOpenFile, onOpenDeal, canAnalyze }) {
   const c = call;
   const status = {
     none: { text: 'Not analyzed yet', action: 'Analyze' },
@@ -517,7 +547,7 @@ function CallRows({ call, open, onToggle, onAnalyze, onOpenFile, onOpenDeal }) {
           <td colSpan={6} className="px-3 py-2 text-text-muted">
             <span className={c.state === 'error' ? 'text-red-400' : ''}>{status.text}</span>
             <span className="text-text-disabled"> · {c.filename}</span>
-            {status.action && (
+            {status.action && canAnalyze && c.id != null && (
               <Button
                 variant="ghost"
                 className="ml-2 !py-0"

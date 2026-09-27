@@ -653,20 +653,50 @@ export const api = {
 
   uploadTranscript: async (dealId, file, uploadedBy) => uploadDealFile(dealId, file, uploadedBy, 'transcript'),
 
-  // ---- Calls (call_insights, see 0049) ----
-  // Every uploaded transcript across all deals, each with its extracted call
-  // data (call_insights is one row per transcript, null until analyzed).
+  // ---- Calls (call_insights, see 0049/0050) ----
+  // Every call across all deals, from both sources: uploaded transcripts (each
+  // with its extracted call data, null until analyzed) and calls the Tactiq
+  // sync agent wrote directly (no file behind them). Normalized to one shape:
+  // { key, id (attachment id, null for Tactiq), deal_id, filename, created_at,
+  //   source, insight }.
+  // Returns { calls, setupPending }. setupPending is true when the
+  // call_insights table isn't in the database yet (migrations 0049/0050 not
+  // applied): the transcripts still list, just without call data.
   listCalls: async () => {
-    const rows = unwrap(
-      await supabase
+    const [uploads, insightsRes] = await Promise.all([
+      supabase
         .from('deal_attachments')
-        .select('*, insight:call_insights(*)')
+        .select('*')
         .eq('kind', 'transcript')
         .order('created_at', { ascending: false }),
+      supabase.from('call_insights').select('*'),
+    ]);
+    const transcripts = unwrap(uploads);
+    // PGRST205 / 42P01 = table missing; PGRST204 / 42703 = column missing.
+    const setupPending = ['PGRST205', '42P01', 'PGRST204', '42703'].includes(insightsRes.error?.code);
+    const insights = setupPending ? [] : unwrap(insightsRes);
+
+    // Joined here rather than with a PostgREST embed so the page doesn't depend
+    // on the API's schema cache knowing the relationship.
+    const byAttachment = new Map(
+      insights.filter((i) => i.attachment_id != null).map((i) => [i.attachment_id, i]),
     );
-    // One-to-one embed: PostgREST returns an object, but older versions return
-    // a one-item array — normalize to object-or-null.
-    return rows.map((r) => ({ ...r, insight: Array.isArray(r.insight) ? r.insight[0] ?? null : r.insight }));
+    const fromUploads = transcripts.map((r) => ({
+      ...r,
+      key: `a${r.id}`,
+      source: 'upload',
+      insight: byAttachment.get(r.id) ?? null,
+    }));
+    const fromTactiq = insights.filter((i) => i.source === 'tactiq').map((ins) => ({
+      key: `t${ins.id}`,
+      id: null,
+      deal_id: ins.deal_id,
+      filename: ins.title || 'Tactiq call',
+      created_at: ins.created_at,
+      source: 'tactiq',
+      insight: ins,
+    }));
+    return { calls: [...fromUploads, ...fromTactiq], setupPending };
   },
 
   // Kick off (or redo) the Claude read of one transcript. Returns right away;
