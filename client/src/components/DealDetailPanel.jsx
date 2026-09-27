@@ -12,6 +12,7 @@ import TouchLog from './deal/TouchLog.jsx';
 import NotesSection from './deal/NotesSection.jsx';
 import CompanyIntel from './company/CompanyIntel.jsx';
 import EconomicsSection from './playbook/EconomicsSection.jsx';
+import CallPrepModal from './playbook/CallPrepModal.jsx';
 import { fmtDate, toDateInput } from '../lib/dates.js';
 import { gmail } from '../lib/gmail.js';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -26,6 +27,7 @@ export default function DealDetailPanel() {
   const [deal, setDeal] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [prepOpen, setPrepOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (selectedId == null) return;
@@ -80,6 +82,7 @@ export default function DealDetailPanel() {
 
   return (
     <SlideOver onClose={closeDeal}>
+      {prepOpen && deal && <CallPrepModal deal={deal} onClose={() => setPrepOpen(false)} />}
       {!deal ? (
         <div className="p-6 text-text-secondary text-[13px]">Loading…</div>
       ) : (
@@ -105,6 +108,9 @@ export default function DealDetailPanel() {
               </button>
             </div>
             <div className="flex items-center gap-1.5 ml-3 shrink-0">
+              <Button variant="secondary" className="!py-1 !px-2 text-[12px]" onClick={() => setPrepOpen(true)}>
+                Call prep
+              </Button>
               <IconButton
                 icon="expand"
                 title="Open full record"
