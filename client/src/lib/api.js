@@ -653,20 +653,39 @@ export const api = {
 
   uploadTranscript: async (dealId, file, uploadedBy) => uploadDealFile(dealId, file, uploadedBy, 'transcript'),
 
-  // ---- Calls (call_insights, see 0049) ----
-  // Every uploaded transcript across all deals, each with its extracted call
-  // data (call_insights is one row per transcript, null until analyzed).
+  // ---- Calls (call_insights, see 0049/0050) ----
+  // Every call across all deals, from both sources: uploaded transcripts (each
+  // with its extracted call data, null until analyzed) and calls the Tactiq
+  // sync agent wrote directly (no file behind them). Normalized to one shape:
+  // { key, id (attachment id, null for Tactiq), deal_id, filename, created_at,
+  //   source, insight }.
   listCalls: async () => {
-    const rows = unwrap(
-      await supabase
+    const [uploads, tactiq] = await Promise.all([
+      supabase
         .from('deal_attachments')
         .select('*, insight:call_insights(*)')
         .eq('kind', 'transcript')
         .order('created_at', { ascending: false }),
-    );
+      supabase.from('call_insights').select('*').eq('source', 'tactiq'),
+    ]);
     // One-to-one embed: PostgREST returns an object, but older versions return
     // a one-item array — normalize to object-or-null.
-    return rows.map((r) => ({ ...r, insight: Array.isArray(r.insight) ? r.insight[0] ?? null : r.insight }));
+    const fromUploads = unwrap(uploads).map((r) => ({
+      ...r,
+      key: `a${r.id}`,
+      source: 'upload',
+      insight: Array.isArray(r.insight) ? r.insight[0] ?? null : r.insight,
+    }));
+    const fromTactiq = unwrap(tactiq).map((ins) => ({
+      key: `t${ins.id}`,
+      id: null,
+      deal_id: ins.deal_id,
+      filename: ins.title || 'Tactiq call',
+      created_at: ins.created_at,
+      source: 'tactiq',
+      insight: ins,
+    }));
+    return [...fromUploads, ...fromTactiq];
   },
 
   // Kick off (or redo) the Claude read of one transcript. Returns right away;
