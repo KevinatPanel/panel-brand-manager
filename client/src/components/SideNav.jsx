@@ -37,8 +37,7 @@ const SECTIONS = [
     items: [
       { to: '/people', label: 'People' },
       { to: '/leads', label: 'Companies' },
-      // Review Queue only appears once there's something to review.
-      { to: '/inbox', label: 'Review Queue', hideWhenEmpty: true },
+      { to: '/inbox', label: 'Review Queue' },
     ],
   },
   {
@@ -103,15 +102,12 @@ export default function SideNav() {
 
       {/* Sectioned nav */}
       <nav className="flex-1 py-4 overflow-y-auto">
-        {SECTIONS.map((section) => {
-          const items = section.items.filter((item) => !(item.hideWhenEmpty && pending === 0));
-          if (items.length === 0) return null;
-          return (
+        {SECTIONS.map((section) => (
           <div key={section.label} className="mb-5">
             <div className="px-5 mb-1.5">
               <Eyebrow>{section.label}</Eyebrow>
             </div>
-            {items.map((item) => (
+            {section.items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -136,8 +132,7 @@ export default function SideNav() {
               </NavLink>
             ))}
           </div>
-          );
-        })}
+        ))}
 
         {/* Clients — one entry per client, each with its own space. */}
         <div className="mb-5">
