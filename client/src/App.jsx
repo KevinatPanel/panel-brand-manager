@@ -16,6 +16,7 @@ import PeopleView from './views/PeopleView.jsx';
 import ScoringConfigView from './views/ScoringConfigView.jsx';
 import SettingsView from './views/SettingsView.jsx';
 import ReviewQueueView from './views/ReviewQueueView.jsx';
+import CallsView from './views/CallsView.jsx';
 import { InboxProvider } from './state/InboxContext.jsx';
 
 const POST_LOGIN_REDIRECT_KEY = 'post-login-redirect';
@@ -80,6 +81,8 @@ export default function App() {
               <Route path="/outreach/:dealId" element={<OutreachView />} />
               <Route path="/meetings" element={<MeetingsView />} />
               <Route path="/meetings/:dealId" element={<MeetingsView />} />
+              <Route path="/calls" element={<CallsView />} />
+              <Route path="/calls/:dealId" element={<CallsView />} />
               {/* Old combined Pipeline route — keep old links/bookmarks working. */}
               <Route path="/pipeline" element={<Navigate to="/outreach" replace />} />
               <Route path="/pipeline/:dealId" element={<PipelineDealRedirect />} />

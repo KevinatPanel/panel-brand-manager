@@ -57,6 +57,7 @@ within a pair is fine, but apply them in the order listed below to match prod.
 | 0046 | `0046_deal_size_meeting_fields.sql` | `deals.deal_size` + `meeting_outcome`/`meeting_notes`; recreates `deal_summaries`; `start_outreach()` gains `p_deal_size` |
 | 0047 | `0047_stage_weights.sql` | `stage_weights` table — the per-stage 0-1 multiplier behind the weighted pipeline total |
 | 0048 | `0048_deal_snooze.sql` | `deals.snoozed_until` + `snooze_note` (park a deal until a date; excluded from the weighted total while snoozed); recreates `deal_summaries` |
+| 0049 | `0049_call_insights.sql` | `call_insights` table — per-transcript call data (sides, minutes, questions, objections, buy-in, payout, action items) filled by the `analyze-transcript` Edge Function |
 
 > ⚠️ The `0006`, `0012`, and `0015` files are already applied in production —
 > **do not rename them.** For any new migration, use the next free number
