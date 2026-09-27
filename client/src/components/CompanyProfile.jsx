@@ -11,6 +11,7 @@ import SpendGoalWidget from './SpendGoalWidget.jsx';
 import QualityMetricWidget from './QualityMetricWidget.jsx';
 import OffersWidget from './OffersWidget.jsx';
 import QualifierSection from './playbook/QualifierSection.jsx';
+import ProgramSection from './playbook/ProgramSection.jsx';
 import AdLibrarySection from './playbook/AdLibrarySection.jsx';
 import { TierChip, TierSelect, ThreadStatus } from './playbook/BuyerTier.jsx';
 import ScoreBadge from './company/ScoreBadge.jsx';
@@ -281,6 +282,7 @@ export default function CompanyProfile({ leadId, onDeleted }) {
           prospects, same as the Enrichment/Signals/pipeline gating above. */}
       <div className="w-[420px] shrink-0 h-full overflow-y-auto">
         {lead.is_client && <SpendGoalWidget lead={lead} />}
+        {lead.is_client && <ProgramSection lead={lead} />}
         <QualityMetricWidget lead={lead} />
         <OffersWidget lead={lead} />
         <ContactsSection lead={lead} busy={busy} after={after} />

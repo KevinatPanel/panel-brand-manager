@@ -7,6 +7,7 @@
 export const ECONOMICS_DEFAULTS = {
   ua_fee_pct: 30, // Panel's UA fee as a share of what the brand pays
   commission_pct: 8, // a rep's commission, as a share of Panel's profit
+  show_commission: false, // show commission projections next to profit
   bid_floor: 10, // the least a creator will run an offer for, $ per event
   dead_below: 10, // eCPM under this is the dead zone
   goated_above: 20, // eCPM over this is goated

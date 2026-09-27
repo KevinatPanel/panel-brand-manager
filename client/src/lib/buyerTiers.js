@@ -13,7 +13,9 @@ export const TIER_ORDER = ['primary', 'decision', 'champion', 'skip'];
 
 const FUNCTION = /growth|acquisition|performance|affiliate|partnership|creator|influencer|user acquisition|\bua\b|paid|demand gen/;
 const DECISION_TITLE = /\b(chief|cmo|ceo|coo|cro|cgo|founder|co-founder|president|owner|vp|vice president|svp|evp|gm|general manager)\b/;
-const LEAD_TITLE = /\b(head|director|senior manager|sr\.? manager|lead)\b/;
+// Senior operators: head / director / lead, or any senior manager title
+// ("Senior Affiliate Marketing Manager", "Sr. Manager, Acquisition").
+const LEAD_TITLE = /\b(head|director|lead)\b|\b(senior|sr\.?)\b.*\bmanager\b/;
 const JUNIOR_TITLE = /\b(manager|specialist|associate|coordinator|analyst|strategist)\b/;
 const SKIP_FUNCTION = /engineer|developer|recruit|talent|finance|accounting|legal|counsel|hr\b|people ops|customer (support|success)|design|product manager|sales development|intern/;
 

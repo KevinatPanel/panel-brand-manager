@@ -1,3 +1,4 @@
+import GoalsWidget from '../components/playbook/GoalsWidget.jsx';
 import ViewHeader from '../components/ViewHeader.jsx';
 import HomeSpendGoalWidget from '../components/HomeSpendGoalWidget.jsx';
 
@@ -6,6 +7,7 @@ export default function HomeView() {
     <div>
       <ViewHeader title="Home" subtitle="Overview dashboard" />
       <div className="px-6 py-6">
+        <GoalsWidget />
         <HomeSpendGoalWidget />
       </div>
     </div>
