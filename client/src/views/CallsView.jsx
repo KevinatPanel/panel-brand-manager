@@ -6,6 +6,9 @@ import { api } from '../lib/api.js';
 import { fmtDateOnly } from '../lib/dates.js';
 import { useDeals } from '../state/DealsContext.jsx';
 import { brandStats } from '../lib/callStats.js';
+import { CADENCE_STEPS, cadenceScore } from '../lib/cadence.js';
+import { playbook } from '../lib/playbookApi.js';
+import { OWNERS } from '../lib/stages.js';
 import {
   BarChart,
   BuyInMoments,
@@ -199,6 +202,7 @@ function CallDetail({ row, onAnalyze, onOpenFile }) {
           </div>
         )}
         <DetailList label="What they pushed on" items={ins?.objections} />
+        <CadenceChecklist cadence={ins?.cadence} />
         <div className="flex items-center gap-3 pt-1">
           {row.source === 'tactiq' ? (
             ins?.source_url && (
@@ -551,7 +555,65 @@ export default function CallsView() {
 const fmtDays = (n) => (n == null ? '—' : `${n}`);
 
 // The Overview tab: headline numbers, open action items, then the charts.
+// E. How the call ran against the discovery cadence (call_insights.cadence).
+function CadenceChecklist({ cadence }) {
+  const score = cadenceScore(cadence);
+  if (!score) return null;
+  return (
+    <div>
+      <Eyebrow className="mb-1.5">Cadence · {score.hit} of {score.of} steps</Eyebrow>
+      <ul className="space-y-1">
+        {CADENCE_STEPS.filter((s) => cadence[s.key]?.hit != null).map((s) => {
+          const step = cadence[s.key];
+          return (
+            <li key={s.key} className="text-[13px] flex gap-2">
+              <span className={`font-mono shrink-0 ${step.hit ? 'text-signal' : 'text-red-400'}`}>{step.hit ? '✓' : '✗'}</span>
+              <span className={step.hit ? 'text-text-secondary' : 'text-text-primary'}>
+                {s.label}
+                {step.note && <span className="text-text-muted"> · {step.note}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Overview({ brands, done, actionItems, openDeal }) {
+  // F. The playbook's answer to each pushback theme (playbook_entries).
+  const [answers, setAnswers] = useState({});
+  useEffect(() => {
+    playbook.listPlaybook('objection').then(setAnswers).catch(() => {});
+  }, []);
+
+  // E. Cadence coverage: the share of scored calls that hit each step, and
+  // each rep's average across their calls.
+  const scored = done.filter((c) => cadenceScore(c.insight?.cadence));
+  const coverage = CADENCE_STEPS.map((s) => {
+    const reported = scored.filter((c) => c.insight.cadence[s.key]?.hit != null);
+    const hit = reported.filter((c) => c.insight.cadence[s.key].hit).length;
+    return { key: s.key, label: s.label, hit, of: reported.length };
+  })
+    .filter((r) => r.of)
+    .map((r) => ({
+      key: r.key,
+      label: r.label,
+      value: Math.round((r.hit / r.of) * 100),
+      display: `${Math.round((r.hit / r.of) * 100)}%`,
+      tip: `${r.label}: ${r.hit} of ${r.of} calls`,
+    }));
+  if (coverage.length) {
+    const low = Math.min(...coverage.map((r) => r.value));
+    coverage.forEach((r) => { r.open = r.value === low; });
+  }
+  const byRep = OWNERS.map((rep) => {
+    const mine = scored.filter((c) => (c.insight.panel_side ?? '').toLowerCase().includes(rep.toLowerCase()));
+    if (!mine.length) return null;
+    const avg = Math.round(mine.reduce((n, c) => n + cadenceScore(c.insight.cadence).pct, 0) / mine.length);
+    return { key: rep, label: rep, value: avg, display: `${avg}%`, tip: `${rep}: ${avg}% of steps across ${mine.length} call${mine.length === 1 ? '' : 's'}` };
+  }).filter(Boolean).sort((a, b) => b.value - a.value);
+
   const said = brands.filter((b) => b.yesDate);
   const fastest = [...brands].filter((b) => b.emailToCall != null).sort((a, b) => a.emailToCall - b.emailToCall)[0];
   const minOf = (rows) => Math.min(...rows.map((r) => r.value));
@@ -707,7 +769,29 @@ function Overview({ brands, done, actionItems, openDeal }) {
         <p className="text-text-muted text-[12px] -mt-3 mb-4">
           How many times each brand raised each kind of concern. Pick a theme to read what it sounded like.
         </p>
-        <ThemeHeatmap brands={brands} />
+        <ThemeHeatmap brands={brands} answers={answers} />
+      </ChartSection>
+
+      <ChartSection eyebrow="Call coaching" title="How the calls ran against the cadence">
+        {scored.length === 0 ? (
+          <p className="text-text-muted text-[12px] -mt-3">
+            No calls scored yet. Calls analyzed after this update are scored against the 8-step discovery cadence.
+          </p>
+        ) : (
+          <div className="grid gap-10 md:grid-cols-2">
+            <BarChart
+              title="Share of calls that hit each step"
+              rows={coverage}
+              caption={`Across ${scored.length} scored call${scored.length === 1 ? '' : 's'}. The striped bar is the step missed most often: the one to drill.`}
+            />
+            <BarChart
+              title="Steps hit, by rep"
+              rows={byRep}
+              caption="Average share of cadence steps hit on the calls each rep was on."
+              empty="No rep names on the scored calls."
+            />
+          </div>
+        )}
       </ChartSection>
 
       <ChartSection eyebrow="Buyer profile" title="What each brand had, next to how it turned out">

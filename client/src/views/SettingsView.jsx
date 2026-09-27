@@ -1,3 +1,4 @@
+import EconomicsSettings from '../components/playbook/EconomicsSettings.jsx';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ViewHeader from '../components/ViewHeader.jsx';
@@ -103,6 +104,9 @@ export default function SettingsView() {
             </div>
           </form>
         </div>
+
+        {/* Economics + goals (playbook features) */}
+        <EconomicsSettings />
 
         {/* Integrations */}
         <div>

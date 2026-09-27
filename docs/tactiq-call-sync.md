@@ -15,7 +15,7 @@ change it, update the routine too (Claude Code → Routines → "Tactiq call syn
 ## Requirements
 - The routine owner's Supabase account must be a member of the Brand Internal
   Tool project (`sexvfnypyhojgppwrpxo`) with write access.
-- Migrations `0049` to `0052` applied.
+- Migrations `0049` to `0053` applied.
 - Connectors on the routine: **tactiq**, **Supabase**, **Google Calendar**, **Gmail** (read only).
 
 ## Routine prompt
@@ -26,11 +26,11 @@ You are the Tactiq call sync for Panel's Brand Manager. Each run, find brand sal
 Tools: the tactiq connector (read calls), the Google Calendar connector (attendee emails), the Gmail connector (read the email threads with each brand; never send, draft, label or delete anything), and the Supabase connector's execute_sql on project_id "sexvfnypyhojgppwrpxo" (the Brand Manager database). Do not write anything anywhere else, and do not change the database schema.
 
 STEP 0: Preflight.
-Run: select column_name from information_schema.columns where table_schema = 'public' and table_name = 'call_insights' and column_name in ('tactiq_meeting_id', 'pushback')
+Run: select column_name from information_schema.columns where table_schema = 'public' and table_name = 'call_insights' and column_name in ('tactiq_meeting_id', 'pushback', 'cadence')
 union all
 select 'deal_milestones' from information_schema.tables where table_schema = 'public' and table_name = 'deal_milestones';
 - If Supabase says you don't have permission: stop and report "The routine owner's Supabase account needs to be added to the Brand Internal Tool project."
-- If it returns fewer than 3 rows: stop and report "Migrations 0050, 0051 and 0052 have not all been applied yet."
+- If it returns fewer than 4 rows: stop and report "Migrations 0050 to 0053 have not all been applied yet."
 
 STEP 1: Candidate calls.
 Use tactiq search_meetings with dateFrom = 4 days ago (UTC, ISO 8601) and limit 50. Drop any meeting shorter than 5 minutes (durationSeconds < 300). Then drop ones already synced:
@@ -68,12 +68,13 @@ Fill these fields (null or an empty list when the call doesn't establish it):
 - pushback: JSON array of {"theme": "...", "text": "..."}, the same objections each tagged with one theme: quality (user quality, retention, fraud, LTV), control (approval over creators or content, brand safety), mechanics (how the model works, who pays whom, how Panel makes money), scripts (scripts, authenticity, creative), proof (case studies, examples, other clients), price (CPA, payout, budget, fees), supply (creator pool, niche, geography, audience fit), tracking (attribution, MMP, postbacks, reporting), launch (contracts, legal, compliance, timelines, setup)
 - decision_layers: JSON array of the people or teams the brand said must sign off before a signature, e.g. ["legal", "manager"]
 - profile: JSON object with only the checks the call established, each true or false: kpi_owner_on_call, named_flat_fee_pain, can_sign_alone, cheap_frequent_event, tracking_ready, ok_with_ad_approval, supply_restriction
+- cadence: JSON object scoring Panel's side of the call, each step {"hit": true|false|null, "note": "one short line"} (null when the step doesn't apply to this call): open_light (opened by asking about the brand before pitching), discovery_first (learned their model, past creator programs, CPA, LTV and funnel before positioning), payable_event (pinned down the event they'd pay on and worked a payout back from their numbers), flat_fee_contrast (contrasted paying per event with flat-fee influencer deals), proof_drop (anchored with a client proof point), objection_handled (answered their main objection rather than deflecting), the_ask (asked for a capped test budget, about $10K, framed as a diagnostic), next_steps (left with a dated next step and what Panel would send)
 - buy_in_quote, buy_in_at ("mm:ss" from the excerpt's startSeconds), buy_in_before (what came right before it)
 - payout, budget_cap, payable_event
 
 STEP 4: Write each call (one statement per call). Put every text value in dollar quotes $q$...$q$ so apostrophes are safe, and write NULL for nulls:
-insert into call_insights (source, tactiq_meeting_id, title, source_url, deal_id, status, call_date, brand_side, panel_side, minutes, questions_count, result, outcome, summary, next_step, action_items, objections, pushback, decision_layers, profile, buy_in_quote, buy_in_at, buy_in_before, payout, budget_cap, payable_event, analyzed_at)
-values ('tactiq', $q$<id>$q$, $q$<title>$q$, $q$<url>$q$, <deal_id>, 'done', '<date>', ..., $q$<action_items JSON>$q$::jsonb, $q$<objections JSON>$q$::jsonb, $q$<pushback JSON>$q$::jsonb, $q$<decision_layers JSON>$q$::jsonb, $q$<profile JSON>$q$::jsonb, ..., now())
+insert into call_insights (source, tactiq_meeting_id, title, source_url, deal_id, status, call_date, brand_side, panel_side, minutes, questions_count, result, outcome, summary, next_step, action_items, objections, pushback, decision_layers, profile, cadence, buy_in_quote, buy_in_at, buy_in_before, payout, budget_cap, payable_event, analyzed_at)
+values ('tactiq', $q$<id>$q$, $q$<title>$q$, $q$<url>$q$, <deal_id>, 'done', '<date>', ..., $q$<action_items JSON>$q$::jsonb, $q$<objections JSON>$q$::jsonb, $q$<pushback JSON>$q$::jsonb, $q$<decision_layers JSON>$q$::jsonb, $q$<profile JSON>$q$::jsonb, $q$<cadence JSON>$q$::jsonb, ..., now())
 on conflict (tactiq_meeting_id) where tactiq_meeting_id is not null do nothing;
 
 STEP 5: Email milestones. The deals to check: every deal you wrote a call for in STEP 4, plus every deal that has said yes but isn't live yet:

@@ -1,11 +1,12 @@
 import LeadCard from './LeadCard.jsx';
+import { classifyBrand, qualifierInputs } from '../lib/qualifier.js';
 import { Eyebrow } from './ui.jsx';
 
 // A collapsible vertical section. Leads arrive pre-sorted by score desc and are
 // ranked 1..n within the group. Open/closed state is controlled by LeadsView so
 // the second nav can force a section open when jumping to it. The `id` anchors
 // the section for scroll-into-view.
-export default function LeadGroup({ id, name, leads, open, onToggle, onCardClick }) {
+export default function LeadGroup({ id, name, leads, open, onToggle, onCardClick, qualifierData }) {
   return (
     <section id={`vert-${id}`} className="mb-8 scroll-mt-20">
       <button
@@ -26,7 +27,17 @@ export default function LeadGroup({ id, name, leads, open, onToggle, onCardClick
             <div className="text-text-disabled text-[12px] py-2">No leads in this vertical.</div>
           ) : (
             leads.map((lead, i) => (
-              <LeadCard key={lead.id} lead={lead} rank={i + 1} onClick={() => onCardClick(lead.id)} />
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                rank={i + 1}
+                qualifier={classifyBrand(
+                  qualifierInputs(lead, qualifierData?.manual?.[lead.id]),
+                  new Date(),
+                  qualifierData?.adChecks?.[lead.id],
+                )}
+                onClick={() => onCardClick(lead.id)}
+              />
             ))
           )}
         </div>

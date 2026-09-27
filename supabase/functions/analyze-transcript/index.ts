@@ -33,6 +33,22 @@ const THEME_GUIDE =
   "supply: creator pool, niche, geography, audience fit. tracking: attribution, MMP, postbacks, reporting. " +
   "launch: contracts, legal, compliance, timelines, setup.";
 
+// The discovery-call cadence calls are coached against (client lib/cadence.js).
+const CADENCE = {
+  open_light: "Opened by asking about the brand before pitching Panel.",
+  discovery_first: "Learned their model, past creator programs, CPA, LTV and funnel before positioning.",
+  payable_event: "Pinned down the event they would pay on and worked a payout back from their numbers.",
+  flat_fee_contrast: "Contrasted paying per event with flat-fee influencer deals.",
+  proof_drop: "Anchored with a client proof point (scale, views, eCPM).",
+  objection_handled: "Answered the brand's main objection rather than deflecting it.",
+  the_ask: "Asked for a capped test budget (about $10K) framed as a diagnostic.",
+  next_steps: "Left with a dated next step and what Panel would send.",
+} as const;
+const CadenceStep = z.object({
+  hit: z.boolean().nullable().describe("true if Panel did this, false if it didn't, null if it doesn't apply to this call."),
+  note: z.string().nullable().describe("One short line of evidence or what was missing."),
+});
+
 const CallSchema = z.object({
   call_date: z.string().nullable().describe("Date of the call as YYYY-MM-DD, only if stated in the transcript."),
   brand_side: z.string().nullable().describe("Brand-side attendees, e.g. 'Harrison, head of marketing; Brian'."),
@@ -66,6 +82,9 @@ const CallSchema = z.object({
     ok_with_ad_approval: z.boolean().nullable().describe("They're fine approving at the ad level rather than vetting every creator first."),
     supply_restriction: z.boolean().nullable().describe("They restrict which creators can work on it (geography, niche, look, audience)."),
   }).describe("Buyer profile checks: true or false only when the call establishes it, otherwise null."),
+  cadence: z.object(
+    Object.fromEntries(Object.entries(CADENCE).map(([k, d]) => [k, CadenceStep.describe(d)])) as Record<keyof typeof CADENCE, typeof CadenceStep>,
+  ).describe("How Panel's side ran the call against the discovery cadence."),
   buy_in_quote: z.string().nullable().describe("The brand's own words at the moment they bought in, verbatim if possible."),
   buy_in_at: z.string().nullable().describe("Timestamp of that moment in the call, e.g. '27:11', if the transcript has timestamps."),
   buy_in_before: z.string().nullable().describe("What was said or shown right before the buy-in."),
@@ -191,6 +210,7 @@ async function analyze(db: Db, att: Attachment): Promise<void> {
     objections: out.pushback.map((p) => p.text),
     pushback: out.pushback,
     decision_layers: out.decision_layers,
+    cadence: out.cadence,
     // Keep only the checks the call actually established.
     profile: Object.fromEntries(Object.entries(out.profile).filter(([, v]) => v != null)),
     buy_in_quote: out.buy_in_quote,

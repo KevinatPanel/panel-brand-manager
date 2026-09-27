@@ -19,6 +19,9 @@ import SnoozedDrawer, { DRAWER_HEADER, drawerBody } from '../components/SnoozedD
 import OutreachSettingsDialog from '../components/settings/OutreachSettingsDialog.jsx';
 import { DEFAULT_CARD_FIELDS } from '../components/DealCard.jsx';
 import { Button, Input, Select, IconButton } from '../components/ui.jsx';
+import { playbook } from '../lib/playbookApi.js';
+import { dealEconomics, profitOf } from '../lib/economics.js';
+import { useEconomics } from '../lib/useEconomics.js';
 
 const CARD_FIELDS_KEY = 'deal-card-fields';
 // Chrome above the board: ViewHeader + Toolbar. The board sizes itself with
@@ -159,13 +162,27 @@ export default function OutreachView() {
 
   const weightedValue = (deal) => (deal.deal_size ?? 0) * (weights[deal.current_stage] ?? 0);
 
+  // Each deal's eCPM zone (deal_economics, 0053), so dead-zone offers are
+  // flagged on the card before anyone pitches them. Reloads with the board.
+  const econSettings = useEconomics();
+  const [econRows, setEconRows] = useState([]);
+  useEffect(() => {
+    playbook.listDealEconomics().then(setEconRows).catch(() => {});
+  }, [deals]);
+  const zoneByDeal = useMemo(
+    () => Object.fromEntries(econRows.map((r) => [r.deal_id, dealEconomics(r, econSettings).zone])),
+    [econRows, econSettings],
+  );
+
   // One column per funnel stage (S1-S4, WON, LOST) — every column is
   // collapsible now, not just LOST; WON/LOST start collapsed since they're
   // terminal outcomes, S1-S4 start expanded since they're the active funnel.
   const columns = FUNNEL_STAGES.map((code) => ({
     code,
     label: STAGE_LABELS[code],
-    deals: visible.filter((d) => d.current_stage === code),
+    deals: visible
+      .filter((d) => d.current_stage === code)
+      .map((d) => (zoneByDeal[d.id] ? { ...d, econ_zone: zoneByDeal[d.id] } : d)),
     collapsible: true,
     defaultOpen: code !== 'WON' && code !== 'LOST',
     // From `live`, never from the rendered cards — the column total must not
@@ -216,6 +233,13 @@ export default function OutreachView() {
         <div className="text-right mr-2">
           <div className="eyebrow text-text-muted">Weighted Pipeline</div>
           <div className="font-mono text-text-primary text-[13px]">{formatCurrency(weightedGrandTotal)}</div>
+        </div>
+        {/* The same pipeline in Panel-profit terms: spend × the UA fee (Settings → Economics). */}
+        <div className="text-right mr-2" title={`${econSettings.ua_fee_pct}% UA fee on the weighted pipeline`}>
+          <div className="eyebrow text-text-muted">Weighted Profit</div>
+          <div className="font-mono text-text-primary text-[13px]">
+            {formatCurrency(Math.round(profitOf(weightedGrandTotal, econSettings).profit))}
+          </div>
         </div>
         <IconButton
           icon="gear"

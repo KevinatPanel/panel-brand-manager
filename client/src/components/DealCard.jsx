@@ -59,6 +59,17 @@ export default function DealCard({ deal, fields = DEFAULT_CARD_FIELDS, onClick }
             </span>
           </div>
         )}
+        {/* Dead-zone offers (deal_economics) are flagged before the pitch. */}
+        {deal.econ_zone === 'dead' && (
+          <div className="mt-1.5">
+            <span
+              title="Creators earn too little per 1,000 views at this payout. Open the deal's economics."
+              className="eyebrow border px-1.5 py-0.5 inline-block text-red-400 border-red-500/40"
+            >
+              Dead zone
+            </span>
+          </div>
+        )}
         {fields.contact && deal.primary_stakeholder_name && (
           <div className="text-text-secondary text-[12px] mt-0.5 truncate">
             {deal.primary_stakeholder_name}

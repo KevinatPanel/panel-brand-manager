@@ -70,7 +70,7 @@ function heatClass(n) {
 
 // Brands x themes: how many times each brand pushed on each theme. Clicking a
 // theme opens what that pushback actually sounded like, brand by brand.
-export function ThemeHeatmap({ brands }) {
+export function ThemeHeatmap({ brands, answers = {} }) {
   const [theme, setTheme] = useState(THEMES[0].key);
   const withPushback = brands.filter((b) => Object.keys(b.pushback).length);
   if (!withPushback.length) {
@@ -126,6 +126,13 @@ export function ThemeHeatmap({ brands }) {
       <div className="mt-5 pt-4 border-t border-hairline">
         <div className="text-text-primary text-[15px]">{active.label}</div>
         <p className="text-text-muted text-[12px] mt-0.5 mb-3">{active.def}</p>
+        {answers[theme] && (
+          <div className="mb-4 border-l-2 border-signal pl-3 py-1 max-w-3xl">
+            <div className="eyebrow text-signal mb-1">How to handle it{answers[theme].title ? ` · ${answers[theme].title}` : ''}</div>
+            {answers[theme].body && <p className="text-text-primary text-[13px]">{answers[theme].body}</p>}
+            {answers[theme].say && <p className="text-text-secondary text-[13px] italic mt-1">“{answers[theme].say}”</p>}
+          </div>
+        )}
         {quotes.length === 0 ? (
           <div className="text-text-disabled text-[12px]">No brand pushed on this yet.</div>
         ) : (

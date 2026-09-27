@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { PeopleProvider, usePeople } from '../state/PeopleContext.jsx';
 import ViewHeader from '../components/ViewHeader.jsx';
-import { Input, Button } from '../components/ui.jsx';
+import { Input, Button, Select } from '../components/ui.jsx';
+import { TierChip } from '../components/playbook/BuyerTier.jsx';
+import { TIERS, TIER_ORDER, tierOf } from '../lib/buyerTiers.js';
 import { relativeTime } from '../lib/leads.js';
 import PersonDetailPanel from '../components/PersonDetailPanel.jsx';
 import AddPersonModal from '../components/AddPersonModal.jsx';
@@ -14,12 +16,14 @@ function PeopleRoster() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent'); // 'recent' | 'stale'
   const [adding, setAdding] = useState(false);
+  const [tier, setTier] = useState(''); // buyer tier filter ('' = all)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const byTier = tier ? people.filter((p) => tierOf(p) === tier) : people;
     const matched = !q
-      ? people
-      : people.filter((p) =>
+      ? byTier
+      : byTier.filter((p) =>
           [p.name, p.email, p.title, p.company_name, p.location, p.seniority]
             .filter(Boolean)
             .some((v) => v.toLowerCase().includes(q)),
@@ -42,7 +46,7 @@ function PeopleRoster() {
       if (tb == null) return 1;
       return ta - tb;
     });
-  }, [people, query, sort]);
+  }, [people, query, sort, tier]);
 
   return (
     <div>
@@ -53,6 +57,12 @@ function PeopleRoster() {
           placeholder="Search name, email, company…"
           className="w-64"
         />
+        <Select value={tier} onChange={(e) => setTier(e.target.value)} className="w-40">
+          <option value="">All buyer tiers</option>
+          {TIER_ORDER.map((t) => (
+            <option key={t} value={t}>{TIERS[t].label}</option>
+          ))}
+        </Select>
         <Button variant="secondary" onClick={() => setSort((s) => (s === 'recent' ? 'stale' : 'recent'))}>
           {sort === 'recent' ? 'Recently contacted' : 'Gone cold first'}
         </Button>
@@ -71,8 +81,9 @@ function PeopleRoster() {
       ) : (
         <div className="py-2">
           {/* Column header */}
-          <div className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-2 border-b border-hairline">
+          <div className="grid grid-cols-[1.4fr_0.8fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-2 border-b border-hairline">
             <Col>Name</Col>
+            <Col>Buyer tier</Col>
             <Col>Title</Col>
             <Col>Company</Col>
             <Col>Email</Col>
@@ -86,9 +97,10 @@ function PeopleRoster() {
               <div
                 key={p.id}
                 onClick={() => openPerson(p.id)}
-                className="grid grid-cols-[1.4fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
+                className="grid grid-cols-[1.4fr_0.8fr_1.2fr_1.3fr_1.4fr_1fr] gap-4 px-6 py-3 border-b border-hairline items-center cursor-pointer hover:bg-card-hover transition-colors"
               >
                 <div className="text-text-primary text-[13px] truncate">{p.name || '—'}</div>
+                <div>{tierOf(p) ? <TierChip contact={p} /> : <span className="text-text-disabled text-[13px]">—</span>}</div>
                 <div className="text-text-secondary text-[13px] truncate">{p.title || '—'}</div>
                 <div className="text-text-secondary text-[13px] truncate">{p.company_name || '—'}</div>
                 <div className="text-text-secondary text-[13px] truncate">{p.email || '—'}</div>
