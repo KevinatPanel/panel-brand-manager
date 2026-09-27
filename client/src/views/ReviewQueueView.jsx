@@ -33,7 +33,7 @@ function ViewThreadButton({ threadId, title, onOpen }) {
 }
 
 function SuggestionCard({ sug, deals, onResolve, onOpenThread }) {
-  const { openDeal, refresh: refreshDeals } = useDeals();
+  const { refresh: refreshDeals } = useDeals();
   const [brand, setBrand] = useState(brandFromDomain(sug.contact_domain));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -51,11 +51,9 @@ function SuggestionCard({ sug, deals, onResolve, onOpenThread }) {
     }
   }
 
-  const createDeal = () =>
-    run(async () => {
-      const dealId = await gmail.acceptSuggestionAsDeal(sug.id, brand);
-      openDeal(dealId);
-    });
+  // Stay in the queue after creating the deal so the next suggestion is right
+  // there; the deal is in the pipeline for later.
+  const createDeal = () => run(() => gmail.acceptSuggestionAsDeal(sug.id, brand));
 
   const attach = (dealId) => {
     if (!dealId) return;
@@ -121,7 +119,7 @@ function SuggestionCard({ sug, deals, onResolve, onOpenThread }) {
 
 // A prospect replied on an S1 deal — offer to advance it to S2.
 function StageMoveCard({ sug, deals, onResolve, onOpenThread }) {
-  const { openDeal, refresh: refreshDeals } = useDeals();
+  const { refresh: refreshDeals } = useDeals();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const dealName = deals.find((d) => d.id === sug.proposed_deal_id)?.company_name ?? 'this deal';
@@ -166,12 +164,7 @@ function StageMoveCard({ sug, deals, onResolve, onOpenThread }) {
           <Button
             variant="primary"
             disabled={busy}
-            onClick={() =>
-              run(async () => {
-                const id = await gmail.acceptStageMove(sug.id);
-                openDeal(id);
-              })
-            }
+            onClick={() => run(() => gmail.acceptStageMove(sug.id))}
           >
             {busy ? 'Working…' : `Move to ${sug.proposed_stage}`}
           </Button>
