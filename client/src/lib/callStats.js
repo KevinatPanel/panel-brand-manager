@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // Per-brand numbers behind the Calls view's charts and timeline, computed from
-// the analyzed calls (call_insights) plus each deal's first Email touch and
-// the date it was won. Pure functions; no fetching.
+// the analyzed calls (call_insights) plus each deal's email milestones
+// (deal_milestones: first email, paper, live, status), its first Email touch
+// and the date it was won. Pure functions; no fetching.
 // ---------------------------------------------------------------------------
 
 // The pushback themes (0051 call_insights.pushback[].theme), in column order.
@@ -71,10 +72,15 @@ export function brandStats(calls, deals, context) {
     // The deciding call: where they said yes, else the latest one.
     const deciding = yesCall ?? latest;
 
-    const firstEmail = context.firstEmail[dealId]?.slice(0, 10) ?? null;
+    const ms = context.milestones?.[dealId] ?? {};
+    // The email milestone is the better first-email source (it reads the whole
+    // thread history); the earliest logged Email touch is the fallback.
+    const firstEmail = ms.first_email_at ?? context.firstEmail[dealId]?.slice(0, 10) ?? null;
     const firstCall = sorted[0]?.date ?? null;
     const yesDate = yesCall?.date ?? null;
     const wonDate = context.won[dealId]?.slice(0, 10) ?? null;
+    const paperDate = ms.paper_at ?? null;
+    const liveDate = ms.live_at ?? null;
 
     // Pushback grouped by theme, each item remembering its call.
     const pushback = {};
@@ -102,12 +108,17 @@ export function brandStats(calls, deals, context) {
       firstCall,
       yesDate,
       wonDate,
+      paperDate,
+      paperNote: ms.paper_note ?? null,
+      liveDate,
+      liveNote: ms.live_note ?? null,
+      statusNote: ms.status_note ?? null,
       callsToYes: yesIdx >= 0 ? yesIdx + 1 : null,
       emailToCall: daysBetween(firstEmail, firstCall),
       callToYes: daysBetween(firstCall, yesDate),
-      yesToWon: daysBetween(yesDate, wonDate),
-      // Still not won: days since the yes so far.
-      yesOpenDays: yesDate && !wonDate ? daysBetween(yesDate, today()) : null,
+      yesToLive: daysBetween(yesDate, liveDate),
+      // Not live yet: days since the yes so far.
+      yesOpenDays: yesDate && !liveDate ? daysBetween(yesDate, today()) : null,
       yesMinute: minuteOf(yesCall?.insight?.buy_in_at),
       yesStamp: yesCall?.insight?.buy_in_at ?? null,
       decidingQuestions: deciding?.questions_count ?? null,

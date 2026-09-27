@@ -52,12 +52,13 @@ const BRAND_COLUMNS = [
   { key: 'minutes', label: 'Minutes' },
   { key: 'questions', label: 'Questions' },
   { key: 'yesDate', label: 'Yes' },
-  { key: 'wonDate', label: 'Won' },
+  { key: 'paperDate', label: 'Paper' },
+  { key: 'liveDate', label: 'Live' },
   { key: 'emailToCall', label: 'Email to call' },
   { key: 'callToYes', label: 'Call to yes' },
-  { key: 'yesToWon', label: 'Yes to won' },
-  { key: 'latestResult', label: 'Latest result' },
-  { key: 'payout', label: 'Payout' },
+  { key: 'yesToLive', label: 'Yes to live' },
+  { key: 'statusNote', label: 'Status' },
+  { key: 'latestResult', label: 'Result' },
 ];
 
 const TABS = [
@@ -353,7 +354,7 @@ export default function CallsView() {
     () => [...new Set(calls.filter((c) => c.state === 'done').map((c) => c.deal_id))].sort(),
     [calls],
   );
-  const [timeline, setTimeline] = useState({ firstEmail: {}, won: {} });
+  const [timeline, setTimeline] = useState({ firstEmail: {}, won: {}, milestones: {} });
   const dealKey = doneDealIds.join(',');
   useEffect(() => {
     let live = true;
@@ -496,9 +497,10 @@ export default function CallsView() {
           {tab === 'brands' && (
             <section className="px-3 pt-4 pb-10 overflow-x-auto">
               <p className="px-3 mb-3 text-text-muted text-[12px] max-w-3xl">
-                First email is the earliest Email touch on the deal. Yes is the first call where the
-                brand agreed to a pilot or test. Won is when the deal moved to Won. Day counts fill in
-                as those dates exist.
+                First email, paper and live come from the email threads with each brand: paper is the
+                MSA, NDA or Impact terms done, live is an approved ad running or a creative in the
+                portal. Yes is the first call where the brand agreed to a pilot or test. Day counts fill
+                in as those dates exist; a + means still counting.
               </p>
               {brands.length === 0 ? (
                 <div className="px-3 py-8 text-text-disabled text-[13px]">No analyzed calls yet.</div>
@@ -522,14 +524,17 @@ export default function CallsView() {
                         <td className="px-3 py-2 font-mono text-text-secondary">{b.minutes}</td>
                         <td className="px-3 py-2 font-mono text-text-secondary">{b.questions}</td>
                         <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.yesDate)}</td>
-                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.wonDate)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap" title={b.paperNote ?? undefined}>
+                          {b.paperDate ? fmtDateOnly(b.paperDate) : b.paperNote ? <span className="font-sans text-text-muted">{b.paperNote}</span> : '—'}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap" title={b.liveNote ?? undefined}>{fmtDateOnly(b.liveDate)}</td>
                         <td className="px-3 py-2 font-mono text-text-secondary">{fmtDays(b.emailToCall)}</td>
                         <td className="px-3 py-2 font-mono text-text-secondary">{fmtDays(b.callToYes)}</td>
                         <td className="px-3 py-2 font-mono text-text-secondary">
-                          {b.yesToWon != null ? fmtDays(b.yesToWon) : b.yesOpenDays != null ? `${b.yesOpenDays}+` : '—'}
+                          {b.yesToLive != null ? fmtDays(b.yesToLive) : b.yesOpenDays != null ? `${b.yesOpenDays}+` : '—'}
                         </td>
+                        <td className="px-3 py-2 text-text-secondary min-w-[12rem]">{b.statusNote ?? '—'}</td>
                         <td className="px-3 py-2"><ResultPill result={b.latestResult} /></td>
-                        <td className="px-3 py-2 text-text-secondary">{b.payout ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -578,19 +583,19 @@ function Overview({ brands, done, actionItems, openDeal }) {
     emailToCall.forEach((r) => { r.emphasis = r.value === m; });
   }
 
-  const yesToWon = said
+  const yesToLive = said
     .map((b) =>
-      b.wonDate
-        ? { key: b.deal_id, label: b.brand, value: b.yesToWon, display: `${b.yesToWon}`,
-            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, won ${fmtDateOnly(b.wonDate)}` }
+      b.liveDate
+        ? { key: b.deal_id, label: b.brand, value: Math.max(0, b.yesToLive), display: `${b.yesToLive}`,
+            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, live ${fmtDateOnly(b.liveDate)}` }
         : { key: b.deal_id, label: b.brand, value: b.yesOpenDays, display: `${b.yesOpenDays}+`, open: true,
-            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, not won yet` },
+            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, not live yet${b.statusNote ? ` · ${b.statusNote}` : ''}` },
     )
-    .sort((a, b) => a.value - b.value);
-  const wonRows = yesToWon.filter((r) => !r.open);
-  if (wonRows.length) {
-    const m = minOf(wonRows);
-    wonRows.forEach((r) => { r.emphasis = r.value === m; });
+    .sort((a, b) => (a.open === b.open ? a.value - b.value : a.open ? 1 : -1));
+  const liveRows = yesToLive.filter((r) => !r.open);
+  if (liveRows.length) {
+    const m = minOf(liveRows);
+    liveRows.forEach((r) => { r.emphasis = r.value === m; });
   }
 
   const minuteOfYes = said
@@ -670,12 +675,12 @@ function Overview({ brands, done, actionItems, openDeal }) {
           <BarChart
             title="Days from first email to first call"
             rows={emailToCall}
-            empty="Needs Email touches on the deal to measure."
+            empty="Needs the first email date for the brand."
           />
           <BarChart
-            title="Days from yes to won"
-            rows={yesToWon}
-            caption="Striped bars aren't won yet; the number is days since the yes."
+            title="Days from yes to live"
+            rows={yesToLive}
+            caption="Live means an approved ad running or a creative in the portal. Striped bars aren't live yet; the number is days since the yes."
             empty="No brand has said yes yet."
           />
           <BarChart

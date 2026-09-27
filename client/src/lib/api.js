@@ -700,11 +700,13 @@ export const api = {
   },
 
   // Dates the Calls charts measure against, for the given deals: when each was
-  // first emailed (earliest Email touch) and when it was won (entered WON).
-  // Returns { firstEmail: {dealId: iso}, won: {dealId: iso} }.
+  // first emailed (earliest Email touch), when it was won (entered WON), and
+  // the email milestones in deal_milestones (0052: first email, paper, live,
+  // status). Returns { firstEmail, won, milestones }, each keyed by deal id.
+  // milestones is {} while 0052 isn't applied.
   callTimelineContext: async (dealIds) => {
-    if (!dealIds.length) return { firstEmail: {}, won: {} };
-    const [touches, won] = await Promise.all([
+    if (!dealIds.length) return { firstEmail: {}, won: {}, milestones: {} };
+    const [touches, won, ms] = await Promise.all([
       supabase
         .from('touch_log')
         .select('deal_id, touch_date')
@@ -717,13 +719,16 @@ export const api = {
         .in('deal_id', dealIds)
         .eq('stage', 'WON')
         .order('entered_at', { ascending: true }),
+      supabase.from('deal_milestones').select('*').in('deal_id', dealIds),
     ]);
     const firstBy = (rows, field) => {
       const out = {};
       for (const r of unwrap(rows)) if (!(r.deal_id in out)) out[r.deal_id] = r[field];
       return out;
     };
-    return { firstEmail: firstBy(touches, 'touch_date'), won: firstBy(won, 'entered_at') };
+    const milestones = {};
+    for (const m of ms.error ? [] : ms.data ?? []) milestones[m.deal_id] = m;
+    return { firstEmail: firstBy(touches, 'touch_date'), won: firstBy(won, 'entered_at'), milestones };
   },
 
   // Kick off (or redo) the Claude read of one transcript. Returns right away;
