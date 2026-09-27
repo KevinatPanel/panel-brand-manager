@@ -5,6 +5,14 @@ import { Button, Eyebrow, IconButton, Input } from '../components/ui.jsx';
 import { api } from '../lib/api.js';
 import { fmtDateOnly } from '../lib/dates.js';
 import { useDeals } from '../state/DealsContext.jsx';
+import { brandStats } from '../lib/callStats.js';
+import {
+  BarChart,
+  BuyInMoments,
+  ChartSection,
+  ProfileMatrix,
+  ThemeHeatmap,
+} from '../components/calls/CallCharts.jsx';
 
 // Calls: every uploaded meeting transcript as one row of data — who was on the
 // call, how long, what the brand pushed on, where they bought in, the payout
@@ -37,14 +45,25 @@ const CALL_COLUMNS = [
 
 const BRAND_COLUMNS = [
   { key: 'brand', label: 'Brand' },
-  { key: 'calls', label: 'Calls' },
+  { key: 'vertical', label: 'Vertical' },
+  { key: 'firstEmail', label: 'First email' },
+  { key: 'firstCall', label: 'First call' },
+  { key: 'callCount', label: 'Calls' },
   { key: 'minutes', label: 'Minutes' },
   { key: 'questions', label: 'Questions' },
-  { key: 'first', label: 'First call' },
-  { key: 'last', label: 'Latest call' },
-  { key: 'result', label: 'Latest result' },
+  { key: 'yesDate', label: 'Yes' },
+  { key: 'wonDate', label: 'Won' },
+  { key: 'emailToCall', label: 'Email to call' },
+  { key: 'callToYes', label: 'Call to yes' },
+  { key: 'yesToWon', label: 'Yes to won' },
+  { key: 'latestResult', label: 'Latest result' },
   { key: 'payout', label: 'Payout' },
-  { key: 'cap', label: 'Cap' },
+];
+
+const TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'log', label: 'Call log' },
+  { key: 'brands', label: 'Brands' },
 ];
 
 // Where a transcript's analysis stands: none | pending | stalled | error | done.
@@ -144,6 +163,7 @@ function CallDetail({ row, onAnalyze, onOpenFile }) {
     ['Cap', ins?.budget_cap],
     ['Pays on', ins?.payable_event],
     ['Next step', ins?.next_step],
+    ['Sign-off', (ins?.decision_layers ?? []).join(', ')],
   ].filter(([, v]) => v);
 
   return (
@@ -214,8 +234,9 @@ export default function CallsView() {
   const [query, setQuery] = useState('');
   const [resultFilter, setResultFilter] = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [tab, setTab] = useState('overview');
   const [callSort, toggleCallSort] = useSort({ key: 'date', dir: 'desc' });
-  const [brandSort, toggleBrandSort] = useSort({ key: 'last', dir: 'desc' });
+  const [brandSort, toggleBrandSort] = useSort({ key: 'firstCall', dir: 'desc' });
 
   const load = useCallback(async () => {
     try {
@@ -325,29 +346,27 @@ export default function CallsView() {
   });
   const sortedCalls = sortRows(filtered, callSort);
 
-  // Per-brand rollup of the analyzed calls.
-  const brands = useMemo(() => {
-    const byDeal = new Map();
-    for (const c of calls) {
-      if (c.state !== 'done') continue;
-      const b = byDeal.get(c.deal_id) ?? {
-        deal_id: c.deal_id, brand: c.brand, calls: 0, minutes: 0, questions: 0,
-        first: null, last: null, result: null, payout: null, cap: null,
-      };
-      b.calls += 1;
-      b.minutes += c.minutes ?? 0;
-      b.questions += c.questions_count ?? 0;
-      if (c.date && (!b.first || c.date < b.first)) b.first = c.date;
-      if (c.date && (!b.last || c.date >= b.last)) {
-        b.last = c.date;
-        b.result = c.result;
-        b.payout = c.insight?.payout ?? b.payout;
-        b.cap = c.insight?.budget_cap ?? b.cap;
-      }
-      byDeal.set(c.deal_id, b);
-    }
-    return [...byDeal.values()];
-  }, [calls]);
+  // Per-brand numbers for the charts and the Brands tab. The first-email and
+  // won dates come from touch_log / stage_history, fetched for the brands on
+  // analyzed calls.
+  const doneDealIds = useMemo(
+    () => [...new Set(calls.filter((c) => c.state === 'done').map((c) => c.deal_id))].sort(),
+    [calls],
+  );
+  const [timeline, setTimeline] = useState({ firstEmail: {}, won: {} });
+  const dealKey = doneDealIds.join(',');
+  useEffect(() => {
+    let live = true;
+    api
+      .callTimelineContext(doneDealIds)
+      .then((ctx) => live && setTimeline(ctx))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealKey]);
+  const brands = useMemo(() => brandStats(calls, deals, timeline), [calls, deals, timeline]);
   const sortedBrands = sortRows(brands, brandSort);
 
   const done = calls.filter((c) => c.state === 'done');
@@ -377,9 +396,9 @@ export default function CallsView() {
       {error && <div className="px-6 pt-4 text-red-400 text-[13px]">{error}</div>}
       {setupPending && (
         <div className="mx-6 mt-4 px-4 py-3 border border-hairline text-text-secondary text-[13px] max-w-3xl">
-          Call data isn’t switched on yet: the database update for this page (migrations 0049 and
-          0050) still needs to be applied in Supabase. Your transcripts are listed below and will be
-          read once it’s done.
+          Call data isn’t switched on yet: the database update for this page (migrations 0049 to
+          0051) still needs to be applied in Supabase. Your transcripts are listed in the call log
+          and will be read once it’s done.
         </div>
       )}
 
@@ -393,124 +412,311 @@ export default function CallsView() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 px-6 py-5 border-b border-hairline">
-            <Stat value={brands.length} label="Brands on calls" />
-            <Stat value={done.length} label="Calls analyzed" />
-            <Stat value={done.reduce((n, c) => n + (c.minutes ?? 0), 0)} label="Minutes" />
-            <Stat value={done.filter((c) => c.result === 'yes').length} label="Yes" />
-            <Stat value={done.filter((c) => c.result === 'follow_up').length} label="Follow-ups open" />
-            <Stat value={actionItems.length} label="Action items" />
+          <div className="flex gap-1 px-6 pt-4 border-b border-hairline">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`relative px-3 pb-3 text-[13px] transition-colors ${
+                  tab === t.key ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {t.label}
+                {tab === t.key && <span className="absolute left-0 right-0 bottom-0 h-[2px] bg-signal" />}
+              </button>
+            ))}
           </div>
 
-          {actionItems.length > 0 && (
-            <section className="px-6 py-5 border-b border-hairline">
-              <Eyebrow className="mb-3">Action items</Eyebrow>
-              <ul className="max-h-64 overflow-y-auto divide-y divide-hairline">
-                {actionItems.map((a, i) => (
-                  <li key={i} className="flex items-baseline gap-3 py-1.5 text-[13px]">
-                    <span className="font-mono text-text-muted text-[12px] w-24 shrink-0">{fmtDateOnly(a.call.date)}</span>
-                    <button
-                      onClick={() => openDeal(a.call.deal_id)}
-                      className="text-text-primary hover:text-signal w-32 shrink-0 truncate text-left"
-                    >
-                      {a.call.brand}
-                    </button>
-                    <span className="text-text-secondary min-w-0">
-                      {a.owner && <span className="text-text-primary">{a.owner}: </span>}
-                      {a.task}
-                      {a.due && <span className="text-text-muted"> ({a.due})</span>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {tab === 'overview' && (
+            <Overview
+              brands={brands}
+              done={done}
+              actionItems={actionItems}
+              openDeal={openDeal}
+            />
           )}
 
-          <Toolbar
-            left={
-              <>
-                <Input
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Filter calls…"
-                  className="w-56"
-                />
-                {RESULT_FILTERS.map((f) => (
-                  <Button
-                    key={f.key}
-                    variant={resultFilter === f.key ? 'primary' : 'secondary'}
-                    className="whitespace-nowrap"
-                    onClick={() => setResultFilter(f.key)}
-                  >
-                    {f.label}
-                  </Button>
-                ))}
-              </>
-            }
-            right={<span className="font-mono text-text-muted text-[12px]">{filtered.length} of {calls.length} calls</span>}
-          />
-
-          <section className="px-3 py-2 overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <SortHeader columns={CALL_COLUMNS} sort={callSort} onSort={toggleCallSort} />
-              </thead>
-              <tbody>
-                {sortedCalls.map((c) => {
-                  const open = expanded === c.key;
-                  return (
-                    <CallRows
-                      key={c.key}
-                      call={c}
-                      open={open}
-                      onToggle={() => setExpanded(open ? null : c.key)}
-                      onAnalyze={analyze}
-                      onOpenFile={openFile}
-                      onOpenDeal={openDeal}
-                      canAnalyze={!setupPending}
+          {tab === 'log' && (
+            <>
+              <Toolbar
+                left={
+                  <>
+                    <Input
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Filter calls…"
+                      className="w-56"
                     />
-                  );
-                })}
-              </tbody>
-            </table>
-            {sortedCalls.length === 0 && (
-              <div className="px-3 py-8 text-text-disabled text-[13px]">No calls match.</div>
-            )}
-          </section>
+                    {RESULT_FILTERS.map((f) => (
+                      <Button
+                        key={f.key}
+                        variant={resultFilter === f.key ? 'primary' : 'secondary'}
+                        className="whitespace-nowrap"
+                        onClick={() => setResultFilter(f.key)}
+                      >
+                        {f.label}
+                      </Button>
+                    ))}
+                  </>
+                }
+                right={<span className="font-mono text-text-muted text-[12px]">{filtered.length} of {calls.length} calls</span>}
+              />
 
-          {brands.length > 0 && (
-            <section className="px-3 pt-6 pb-10 border-t border-hairline overflow-x-auto">
-              <Eyebrow className="px-3 mb-2">By brand</Eyebrow>
-              <table className="w-full text-[13px]">
-                <thead>
-                  <SortHeader columns={BRAND_COLUMNS} sort={brandSort} onSort={toggleBrandSort} />
-                </thead>
-                <tbody>
-                  {sortedBrands.map((b) => (
-                    <tr key={b.deal_id} className="border-b border-hairline hover:bg-card-hover">
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <button onClick={() => openDeal(b.deal_id)} className="text-text-primary hover:text-signal font-medium">
-                          {b.brand}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-text-secondary">{b.calls}</td>
-                      <td className="px-3 py-2 font-mono text-text-secondary">{b.minutes}</td>
-                      <td className="px-3 py-2 font-mono text-text-secondary">{b.questions}</td>
-                      <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.first)}</td>
-                      <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.last)}</td>
-                      <td className="px-3 py-2"><ResultPill result={b.result} /></td>
-                      <td className="px-3 py-2 text-text-secondary">{b.payout ?? '—'}</td>
-                      <td className="px-3 py-2 text-text-secondary">{b.cap ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <section className="px-3 py-2 overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <SortHeader columns={CALL_COLUMNS} sort={callSort} onSort={toggleCallSort} />
+                  </thead>
+                  <tbody>
+                    {sortedCalls.map((c) => {
+                      const open = expanded === c.key;
+                      return (
+                        <CallRows
+                          key={c.key}
+                          call={c}
+                          open={open}
+                          onToggle={() => setExpanded(open ? null : c.key)}
+                          onAnalyze={analyze}
+                          onOpenFile={openFile}
+                          onOpenDeal={openDeal}
+                          canAnalyze={!setupPending}
+                        />
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {sortedCalls.length === 0 && (
+                  <div className="px-3 py-8 text-text-disabled text-[13px]">No calls match.</div>
+                )}
+              </section>
+            </>
+          )}
+
+          {tab === 'brands' && (
+            <section className="px-3 pt-4 pb-10 overflow-x-auto">
+              <p className="px-3 mb-3 text-text-muted text-[12px] max-w-3xl">
+                First email is the earliest Email touch on the deal. Yes is the first call where the
+                brand agreed to a pilot or test. Won is when the deal moved to Won. Day counts fill in
+                as those dates exist.
+              </p>
+              {brands.length === 0 ? (
+                <div className="px-3 py-8 text-text-disabled text-[13px]">No analyzed calls yet.</div>
+              ) : (
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <SortHeader columns={BRAND_COLUMNS} sort={brandSort} onSort={toggleBrandSort} />
+                  </thead>
+                  <tbody>
+                    {sortedBrands.map((b) => (
+                      <tr key={b.deal_id} className="border-b border-hairline hover:bg-card-hover">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <button onClick={() => openDeal(b.deal_id)} className="text-text-primary hover:text-signal font-medium">
+                            {b.brand}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-text-secondary whitespace-nowrap">{b.vertical ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.firstEmail)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.firstCall)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">{b.callCount}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">{b.minutes}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">{b.questions}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.yesDate)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary whitespace-nowrap">{fmtDateOnly(b.wonDate)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">{fmtDays(b.emailToCall)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">{fmtDays(b.callToYes)}</td>
+                        <td className="px-3 py-2 font-mono text-text-secondary">
+                          {b.yesToWon != null ? fmtDays(b.yesToWon) : b.yesOpenDays != null ? `${b.yesOpenDays}+` : '—'}
+                        </td>
+                        <td className="px-3 py-2"><ResultPill result={b.latestResult} /></td>
+                        <td className="px-3 py-2 text-text-secondary">{b.payout ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </section>
           )}
         </>
       )}
     </div>
+  );
+}
+
+const fmtDays = (n) => (n == null ? '—' : `${n}`);
+
+// The Overview tab: headline numbers, open action items, then the charts.
+function Overview({ brands, done, actionItems, openDeal }) {
+  const said = brands.filter((b) => b.yesDate);
+  const fastest = [...brands].filter((b) => b.emailToCall != null).sort((a, b) => a.emailToCall - b.emailToCall)[0];
+  const minOf = (rows) => Math.min(...rows.map((r) => r.value));
+
+  // Calls it took to get a yes; brands that haven't said yes show striped at
+  // the calls they've had so far.
+  const toYes = [
+    ...said.map((b) => ({
+      key: b.deal_id, label: b.brand, value: b.callsToYes, display: `${b.callsToYes}`,
+      tip: `${b.brand}: yes on call ${b.callsToYes}, ${fmtDateOnly(b.yesDate)}`,
+    })),
+    ...brands.filter((b) => !b.yesDate).map((b) => ({
+      key: b.deal_id, label: b.brand, value: b.callCount, display: 'no', open: true,
+      tip: `${b.brand}: no yes yet after ${b.callCount} call${b.callCount === 1 ? '' : 's'}`,
+    })),
+  ].sort((a, b) => (a.open === b.open ? a.value - b.value : a.open ? 1 : -1));
+  const toYesMin = said.length ? Math.min(...said.map((b) => b.callsToYes)) : null;
+  toYes.forEach((r) => { r.emphasis = !r.open && r.value === toYesMin; });
+
+  const emailToCall = brands
+    .filter((b) => b.emailToCall != null && b.emailToCall >= 0)
+    .map((b) => ({
+      key: b.deal_id, label: b.brand, value: b.emailToCall, display: `${b.emailToCall}`,
+      tip: `${b.brand}: first email ${fmtDateOnly(b.firstEmail)}, first call ${fmtDateOnly(b.firstCall)}`,
+    }))
+    .sort((a, b) => a.value - b.value);
+  if (emailToCall.length) {
+    const m = minOf(emailToCall);
+    emailToCall.forEach((r) => { r.emphasis = r.value === m; });
+  }
+
+  const yesToWon = said
+    .map((b) =>
+      b.wonDate
+        ? { key: b.deal_id, label: b.brand, value: b.yesToWon, display: `${b.yesToWon}`,
+            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, won ${fmtDateOnly(b.wonDate)}` }
+        : { key: b.deal_id, label: b.brand, value: b.yesOpenDays, display: `${b.yesOpenDays}+`, open: true,
+            tip: `${b.brand}: yes ${fmtDateOnly(b.yesDate)}, not won yet` },
+    )
+    .sort((a, b) => a.value - b.value);
+  const wonRows = yesToWon.filter((r) => !r.open);
+  if (wonRows.length) {
+    const m = minOf(wonRows);
+    wonRows.forEach((r) => { r.emphasis = r.value === m; });
+  }
+
+  const minuteOfYes = said
+    .filter((b) => b.yesMinute != null)
+    .map((b) => ({
+      key: b.deal_id, label: b.brand, value: b.yesMinute, display: b.yesStamp,
+      tip: `${b.brand}: bought in at ${b.yesStamp} on call ${b.callsToYes}`,
+    }))
+    .sort((a, b) => a.value - b.value);
+
+  const questions = brands
+    .filter((b) => b.decidingQuestions != null)
+    .map((b) => ({
+      key: b.deal_id, label: b.brand, value: b.decidingQuestions, display: `${b.decidingQuestions}`,
+      tip: `${b.brand}: ${b.decidingQuestions} questions on the ${b.decidingIsYes ? 'call where they said yes' : 'latest call'}`,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  // Layers: named sign-offs; a brand that could sign alone counts as zero.
+  const layers = brands
+    .map((b) => {
+      const n = b.decisionLayers.length;
+      if (!n && b.profile.can_sign_alone !== true) return null;
+      return {
+        key: b.deal_id, label: b.brand, value: n, display: `${n}`, emphasis: n === 0,
+        tip: n ? `${b.brand}: ${b.decisionLayers.join(', ')}` : `${b.brand}: could sign alone`,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.value - b.value);
+
+  return (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 px-6 py-5 border-b border-hairline">
+        <Stat value={brands.length} label="Brands on calls" />
+        <Stat value={done.length} label="Calls analyzed" />
+        <Stat value={done.reduce((n, c) => n + (c.minutes ?? 0), 0)} label="Minutes on calls" />
+        <Stat value={said.length} label="Brands that said yes" />
+        <Stat
+          value={fastest ? `${fastest.emailToCall} day${fastest.emailToCall === 1 ? '' : 's'}` : '—'}
+          label={fastest ? `Fastest email to call (${fastest.brand})` : 'Fastest email to call'}
+        />
+        <Stat value={actionItems.length} label="Action items" />
+      </div>
+
+      {actionItems.length > 0 && (
+        <section className="px-6 py-5 border-b border-hairline">
+          <Eyebrow className="mb-3">Action items</Eyebrow>
+          <ul className="max-h-64 overflow-y-auto divide-y divide-hairline">
+            {actionItems.map((a, i) => (
+              <li key={i} className="flex items-baseline gap-3 py-1.5 text-[13px]">
+                <span className="font-mono text-text-muted text-[12px] w-24 shrink-0">{fmtDateOnly(a.call.date)}</span>
+                <button
+                  onClick={() => openDeal(a.call.deal_id)}
+                  className="text-text-primary hover:text-signal w-32 shrink-0 truncate text-left"
+                >
+                  {a.call.brand}
+                </button>
+                <span className="text-text-secondary min-w-0">
+                  {a.owner && <span className="text-text-primary">{a.owner}: </span>}
+                  {a.task}
+                  {a.due && <span className="text-text-muted"> ({a.due})</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <ChartSection eyebrow="Shapes in the numbers" title="Where the time goes">
+        <div className="grid gap-10 md:grid-cols-2 xl:grid-cols-3">
+          <BarChart
+            title="Calls it took to get a yes"
+            rows={toYes}
+            caption="Striped bars haven't said yes yet; the length is the calls so far."
+          />
+          <BarChart
+            title="Days from first email to first call"
+            rows={emailToCall}
+            empty="Needs Email touches on the deal to measure."
+          />
+          <BarChart
+            title="Days from yes to won"
+            rows={yesToWon}
+            caption="Striped bars aren't won yet; the number is days since the yes."
+            empty="No brand has said yes yet."
+          />
+          <BarChart
+            title="Minute of the yes"
+            rows={minuteOfYes}
+            caption="On the call where they said yes."
+            empty="No timestamped buy-in yet."
+          />
+          <BarChart
+            title="Questions on the deciding call"
+            rows={questions}
+            caption="The call where they said yes, or the latest call if they haven't."
+          />
+          <BarChart
+            title="Decision layers between the call and a signature"
+            rows={layers}
+            caption="Legal, a manager, a founder, an agency, IT: counted from what the brand said on the call."
+            empty="No sign-off layers recorded yet."
+          />
+        </div>
+      </ChartSection>
+
+      <ChartSection eyebrow="What they pushed on" title="Pushback by theme">
+        <p className="text-text-muted text-[12px] -mt-3 mb-4">
+          How many times each brand raised each kind of concern. Pick a theme to read what it sounded like.
+        </p>
+        <ThemeHeatmap brands={brands} />
+      </ChartSection>
+
+      <ChartSection eyebrow="Buyer profile" title="What each brand had, next to how it turned out">
+        <p className="text-text-muted text-[12px] -mt-3 mb-4">
+          Filled from the calls. A dot means the call didn’t establish it, not a no. Green marks the
+          answer that makes a deal easier.
+        </p>
+        <ProfileMatrix brands={brands} ResultPill={ResultPill} />
+      </ChartSection>
+
+      <ChartSection eyebrow="Where they bought in" title="The moment, on the recording">
+        <BuyInMoments brands={brands} />
+      </ChartSection>
+    </>
   );
 }
 

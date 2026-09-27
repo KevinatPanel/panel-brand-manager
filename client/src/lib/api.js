@@ -699,6 +699,33 @@ export const api = {
     return { calls: [...fromUploads, ...fromTactiq], setupPending };
   },
 
+  // Dates the Calls charts measure against, for the given deals: when each was
+  // first emailed (earliest Email touch) and when it was won (entered WON).
+  // Returns { firstEmail: {dealId: iso}, won: {dealId: iso} }.
+  callTimelineContext: async (dealIds) => {
+    if (!dealIds.length) return { firstEmail: {}, won: {} };
+    const [touches, won] = await Promise.all([
+      supabase
+        .from('touch_log')
+        .select('deal_id, touch_date')
+        .in('deal_id', dealIds)
+        .eq('touch_type', 'Email')
+        .order('touch_date', { ascending: true }),
+      supabase
+        .from('stage_history')
+        .select('deal_id, entered_at')
+        .in('deal_id', dealIds)
+        .eq('stage', 'WON')
+        .order('entered_at', { ascending: true }),
+    ]);
+    const firstBy = (rows, field) => {
+      const out = {};
+      for (const r of unwrap(rows)) if (!(r.deal_id in out)) out[r.deal_id] = r[field];
+      return out;
+    };
+    return { firstEmail: firstBy(touches, 'touch_date'), won: firstBy(won, 'entered_at') };
+  },
+
   // Kick off (or redo) the Claude read of one transcript. Returns right away;
   // the call_insights row goes pending -> done/error in the background.
   analyzeTranscript: async (attachmentId) => {

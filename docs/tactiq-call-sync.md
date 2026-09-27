@@ -13,7 +13,7 @@ change it, update the routine too (Claude Code → Routines → "Tactiq call syn
 ## Requirements
 - The routine owner's Supabase account must be a member of the Brand Internal
   Tool project (`sexvfnypyhojgppwrpxo`) with write access.
-- Migrations `0049` and `0050` applied.
+- Migrations `0049`, `0050` and `0051` applied.
 - Connectors on the routine: **tactiq**, **Supabase**, **Google Calendar**.
 
 ## Routine prompt
@@ -24,9 +24,9 @@ You are the Tactiq call sync for Panel's Brand Manager. Each run, find brand sal
 Tools: the tactiq connector (read calls), the Google Calendar connector (attendee emails), and the Supabase connector's execute_sql on project_id "sexvfnypyhojgppwrpxo" (the Brand Manager database). Do not write anything anywhere else, and do not change the database schema.
 
 STEP 0: Preflight.
-Run: select column_name from information_schema.columns where table_schema = 'public' and table_name = 'call_insights' and column_name = 'tactiq_meeting_id';
+Run: select column_name from information_schema.columns where table_schema = 'public' and table_name = 'call_insights' and column_name in ('tactiq_meeting_id', 'pushback');
 - If Supabase says you don't have permission: stop and report "The routine owner's Supabase account needs to be added to the Brand Internal Tool project."
-- If it returns no row: stop and report "Migration 0050_call_insights_tactiq.sql has not been applied yet."
+- If it returns fewer than 2 rows: stop and report "Migrations 0050_call_insights_tactiq.sql and 0051_call_insights_analysis.sql have not both been applied yet."
 
 STEP 1: Candidate calls.
 Use tactiq search_meetings with dateFrom = 4 days ago (UTC, ISO 8601) and limit 50. Drop any meeting shorter than 5 minutes (durationSeconds < 300). Then drop ones already synced:
@@ -61,12 +61,15 @@ Fill these fields (null or an empty list when the call doesn't establish it):
 - next_step: the single agreed next step
 - action_items: JSON array of {"owner": "...", "task": "...", "due": "..." or null}, one per commitment made on the call
 - objections: JSON array of strings, one line each, close to the brand's words
+- pushback: JSON array of {"theme": "...", "text": "..."}, the same objections each tagged with one theme: quality (user quality, retention, fraud, LTV), control (approval over creators or content, brand safety), mechanics (how the model works, who pays whom, how Panel makes money), scripts (scripts, authenticity, creative), proof (case studies, examples, other clients), price (CPA, payout, budget, fees), supply (creator pool, niche, geography, audience fit), tracking (attribution, MMP, postbacks, reporting), launch (contracts, legal, compliance, timelines, setup)
+- decision_layers: JSON array of the people or teams the brand said must sign off before a signature, e.g. ["legal", "manager"]
+- profile: JSON object with only the checks the call established, each true or false: kpi_owner_on_call, named_flat_fee_pain, can_sign_alone, cheap_frequent_event, tracking_ready, ok_with_ad_approval, supply_restriction
 - buy_in_quote, buy_in_at ("mm:ss" from the excerpt's startSeconds), buy_in_before (what came right before it)
 - payout, budget_cap, payable_event
 
 STEP 4: Write each call (one statement per call). Put every text value in dollar quotes $q$...$q$ so apostrophes are safe, and write NULL for nulls:
-insert into call_insights (source, tactiq_meeting_id, title, source_url, deal_id, status, call_date, brand_side, panel_side, minutes, questions_count, result, outcome, summary, next_step, action_items, objections, buy_in_quote, buy_in_at, buy_in_before, payout, budget_cap, payable_event, analyzed_at)
-values ('tactiq', $q$<id>$q$, $q$<title>$q$, $q$<url>$q$, <deal_id>, 'done', '<date>', ..., $q$<action_items JSON>$q$::jsonb, $q$<objections JSON>$q$::jsonb, ..., now())
+insert into call_insights (source, tactiq_meeting_id, title, source_url, deal_id, status, call_date, brand_side, panel_side, minutes, questions_count, result, outcome, summary, next_step, action_items, objections, pushback, decision_layers, profile, buy_in_quote, buy_in_at, buy_in_before, payout, budget_cap, payable_event, analyzed_at)
+values ('tactiq', $q$<id>$q$, $q$<title>$q$, $q$<url>$q$, <deal_id>, 'done', '<date>', ..., $q$<action_items JSON>$q$::jsonb, $q$<objections JSON>$q$::jsonb, $q$<pushback JSON>$q$::jsonb, $q$<decision_layers JSON>$q$::jsonb, $q$<profile JSON>$q$::jsonb, ..., now())
 on conflict (tactiq_meeting_id) where tactiq_meeting_id is not null do nothing;
 
 STEP 5: Report. End with a short summary: calls added (brand, date, result, action item count), internal meetings skipped (count only), and "Needs a deal" calls with enough detail for Raven to fix the match. If nothing new was found, say so in one line.
