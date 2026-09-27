@@ -45,6 +45,7 @@ const SECTIONS = [
     items: [
       { to: '/outreach', label: 'Pipeline' },
       { to: '/meetings', label: 'Meetings' },
+      { to: '/calls', label: 'Calls' },
     ],
   },
 ];

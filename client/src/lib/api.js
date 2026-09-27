@@ -653,6 +653,33 @@ export const api = {
 
   uploadTranscript: async (dealId, file, uploadedBy) => uploadDealFile(dealId, file, uploadedBy, 'transcript'),
 
+  // ---- Calls (call_insights, see 0049) ----
+  // Every uploaded transcript across all deals, each with its extracted call
+  // data (call_insights is one row per transcript, null until analyzed).
+  listCalls: async () => {
+    const rows = unwrap(
+      await supabase
+        .from('deal_attachments')
+        .select('*, insight:call_insights(*)')
+        .eq('kind', 'transcript')
+        .order('created_at', { ascending: false }),
+    );
+    // One-to-one embed: PostgREST returns an object, but older versions return
+    // a one-item array — normalize to object-or-null.
+    return rows.map((r) => ({ ...r, insight: Array.isArray(r.insight) ? r.insight[0] ?? null : r.insight }));
+  },
+
+  // Kick off (or redo) the Claude read of one transcript. Returns right away;
+  // the call_insights row goes pending -> done/error in the background.
+  analyzeTranscript: async (attachmentId) => {
+    const { data, error } = await supabase.functions.invoke('analyze-transcript', {
+      method: 'POST',
+      body: { attachment_id: attachmentId },
+    });
+    if (error) throw new Error(error.message || 'Could not start transcript analysis');
+    return data;
+  },
+
   getAttachmentDownloadUrl: async (attachment) => {
     const data = unwrap(
       await supabase.storage.from('deal-attachments').createSignedUrl(attachment.storage_path, 60),

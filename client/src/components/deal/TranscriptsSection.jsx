@@ -15,8 +15,8 @@ function formatFileSize(bytes) {
 // Meeting transcripts (e.g. Google Gemini call recordings, exported as text)
 // uploaded from the Meetings collapsible. Same deal_attachments table/bucket
 // as AttachmentsSection, tagged kind: 'transcript' (see 0042) so the two
-// lists never mix. v1 is upload/list/download/delete only — a v2 AI-analysis
-// pass over transcript content is a separate future feature, not built here.
+// lists never mix. Each upload is also sent to the analyze-transcript Edge
+// Function, which fills in its call_insights row for the Calls view (0049).
 export default function TranscriptsSection({ dealId }) {
   const [transcripts, setTranscripts] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -37,7 +37,9 @@ export default function TranscriptsSection({ dealId }) {
     setBusy(true);
     try {
       for (const file of files) {
-        await api.uploadTranscript(dealId, file, uploadedBy);
+        const row = await api.uploadTranscript(dealId, file, uploadedBy);
+        // Best-effort: a failed kickoff can be retried from the Calls view.
+        api.analyzeTranscript(row.id).catch(() => {});
       }
       load();
     } catch (e) {

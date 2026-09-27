@@ -8,12 +8,12 @@ import { api } from '../lib/api.js';
 const DealsContext = createContext(null);
 
 // The open deal, if any, is the single source of truth in the URL
-// (/outreach/:dealId or /meetings/:dealId) rather than local state, so it
+// (/outreach/:dealId, /meetings/:dealId or /calls/:dealId) rather than local state, so it
 // survives refresh, is shareable, and closes itself if the user navigates
-// elsewhere. openDeal/closeDeal derive which of the two base paths is
-// current from location.pathname, so the same panel works from either board.
-const DEAL_ROUTE_RE = /^\/(outreach|meetings)\/(\d+)$/;
-const BOARD_BASE_RE = /^\/(outreach|meetings)(\/|$)/;
+// elsewhere. openDeal/closeDeal derive which base path is current from
+// location.pathname, so the same panel works from any of those pages.
+const DEAL_ROUTE_RE = /^\/(outreach|meetings|calls)\/(\d+)$/;
+const BOARD_BASE_RE = /^\/(outreach|meetings|calls)(\/|$)/;
 
 export function DealsProvider({ children }) {
   const [deals, setDeals] = useState([]);
