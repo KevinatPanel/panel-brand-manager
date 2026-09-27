@@ -21,6 +21,7 @@ import {
   parseAddress,
 } from "./match.ts";
 import { extractPeople, Participant, ParticipantRole, plaintextFromPayload } from "./extract.ts";
+import { type CompanyIndex, fillCompanyDomain, matchCompany } from "./companyMatch.ts";
 
 export interface GmailHeader {
   name: string;
@@ -118,12 +119,15 @@ interface Candidate {
 // Process one message. `msg` may be a metadata-only fetch (the poller) — the
 // full body is fetched here only when there's someone new worth extracting.
 // `ignoredDomains` is the rep's (+ workspace) ignore set, passed in once per run.
+// `companies` (loadCompanyIndex, also once per run) lets a domain with no exact
+// match still land on its company by name: chris@udemy.com -> Udemy.
 export async function suggestFromMessage(
   db: SupabaseClient,
   conn: Connection,
   msg: GmailMessage,
   gapi: (path: string) => Promise<Response>,
   ignoredDomains: Set<string>,
+  companies?: CompanyIndex,
 ): Promise<SuggestResult> {
   const result: SuggestResult = { added: 0, suggested: 0 };
   const headers = msg.payload?.headers ?? [];
@@ -184,6 +188,17 @@ export async function suggestFromMessage(
   const leadByDomain = new Map<string, number>();
   for (const l of leadRows.data ?? []) {
     if (!leadByDomain.has(l.domain)) leadByDomain.set(l.domain, l.id);
+  }
+  // No company with this exact domain: look for one whose name is in the
+  // address (or whose website is this domain) before queueing a new company.
+  if (companies) {
+    for (const domain of domains) {
+      if (leadByDomain.has(domain)) continue;
+      const hit = matchCompany(companies, domain);
+      if (!hit) continue;
+      leadByDomain.set(domain, hit.lead.id);
+      await fillCompanyDomain(db, hit.lead, domain);
+    }
   }
   const sugByDomain = new Map<string, { id: number; status: string; matched_lead_id: number | null }>();
   for (const cs of sugRows.data ?? []) sugByDomain.set(cs.domain, cs);

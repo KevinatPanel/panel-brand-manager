@@ -21,7 +21,8 @@ const STATUS_LABEL = {
 };
 
 // Per-rep toggle: auto-advance an S1 deal to S2 when the prospect replies.
-function AutoAdvanceToggle({ initial }) {
+// Also shown at the top of the Review Queue (onChange reruns its auto-sort).
+export function AutoAdvanceToggle({ initial, onChange, className = 'mt-4 pt-4 border-t border-hairline' }) {
   const [on, setOn] = useState(!!initial);
   const [busy, setBusy] = useState(false);
 
@@ -31,6 +32,7 @@ function AutoAdvanceToggle({ initial }) {
     setBusy(true);
     try {
       await gmail.setAutoAdvance(next);
+      onChange?.(next);
     } catch {
       setOn(!next); // revert on failure
     } finally {
@@ -39,7 +41,7 @@ function AutoAdvanceToggle({ initial }) {
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-hairline flex items-center justify-between gap-4">
+    <div className={`${className} flex items-center justify-between gap-4`}>
       <div className="text-[12px] text-text-secondary leading-relaxed">
         Auto-advance <span className="font-mono">S1 → S2</span> when a prospect replies.
         <div className="text-text-disabled">Off keeps it as a review-queue suggestion instead.</div>

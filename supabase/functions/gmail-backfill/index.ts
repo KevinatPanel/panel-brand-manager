@@ -12,6 +12,7 @@
 import { serviceClient } from "../_shared/supabase.ts";
 import { Connection, getValidAccessToken, markSynced, requireServiceRole } from "../_shared/connections.ts";
 import { GmailMessage, loadIgnoredDomains, suggestFromMessage } from "../_shared/suggest.ts";
+import { loadCompanyIndex } from "../_shared/companyMatch.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const BATCH = 25; // messages per job per invocation (each = list + get + extract)
@@ -78,6 +79,7 @@ async function processJob(
 
   const gapi = makeGapi(token);
   const ignoredDomains = await loadIgnoredDomains(db, conn.user_id);
+  const companies = await loadCompanyIndex(db);
 
   // List the next page of messages.
   const q = new URLSearchParams({ q: SCAN_QUERY, maxResults: String(BATCH) });
@@ -101,7 +103,7 @@ async function processJob(
     if (!res.ok) continue; // deleted / inaccessible
     const msg = (await res.json()) as GmailMessage;
     try {
-      const r = await suggestFromMessage(db, conn as Connection, msg, gapi, ignoredDomains);
+      const r = await suggestFromMessage(db, conn as Connection, msg, gapi, ignoredDomains, companies);
       suggested += r.added + r.suggested;
     } catch {
       // one bad message must not abort the batch

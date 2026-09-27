@@ -6,6 +6,8 @@ import { gmail } from '../lib/gmail.js';
 import { STAGE_LABELS } from '../lib/stages.js';
 import { useDeals } from '../state/DealsContext.jsx';
 import { useInbox } from '../state/InboxContext.jsx';
+import { AutoAdvanceToggle } from '../components/GmailConnectionCard.jsx';
+import { autoSortQueue, describeAutoSort } from '../lib/queueAutoSort.js';
 
 // Default brand name from a domain: "acme.io" -> "Acme".
 function brandFromDomain(domain) {
@@ -358,20 +360,35 @@ export default function ReviewQueueView() {
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null); // { threadId, title } | null
   const [refreshing, setRefreshing] = useState(false);
+  const [autoNote, setAutoNote] = useState(null);
+  const [autoAdvance, setAutoAdvance] = useState(null); // null until the Gmail status loads
 
+  // Pull the queue, let auto-sort file what it can (lib/queueAutoSort.js),
+  // then show what's left.
   const load = useCallback(async () => {
+    const pull = () => Promise.all([gmail.listSuggestions(), gmail.listCompanySuggestions()]);
     try {
-      const [sugs, comps] = await Promise.all([
-        gmail.listSuggestions(),
-        gmail.listCompanySuggestions(),
-      ]);
+      let [sugs, comps] = await pull();
+      try {
+        const adv = !!(await gmail.getStatus().catch(() => null))?.auto_advance_s1_s2;
+        setAutoAdvance(adv);
+        const done = await autoSortQueue({ suggestions: sugs, companies: comps, autoAdvance: adv });
+        const note = describeAutoSort(done);
+        if (note) {
+          setAutoNote(note);
+          [sugs, comps] = await pull();
+          refreshInbox();
+        }
+      } catch {
+        // Auto-sort is a convenience: the queue still shows if it fails.
+      }
       setSuggestions(sugs);
       setCompanies(comps);
       setError(null);
     } catch (e) {
       setError(e.message);
     }
-  }, []);
+  }, [refreshInbox]);
 
   useEffect(() => {
     load();
@@ -424,6 +441,19 @@ export default function ReviewQueueView() {
       <div className="flex items-start gap-4 p-6">
         <div className="flex-1 min-w-0 max-w-2xl space-y-3">
           {error && <div className="text-red-400 text-[13px]">{error}</div>}
+          {autoNote && (
+            <div className="flex items-start justify-between gap-3 border-l-2 border-signal pl-3 py-1 text-[13px] text-text-secondary">
+              <span>{autoNote}</span>
+              <button onClick={() => setAutoNote(null)} className="text-text-muted hover:text-text-primary shrink-0" aria-label="Dismiss">
+                ✕
+              </button>
+            </div>
+          )}
+          {autoAdvance === false && (suggestions ?? []).some((s) => s.proposed_action === 'stage_move') && (
+            <div className="panel-card px-4 py-3">
+              <AutoAdvanceToggle initial={false} className="" onChange={(on) => on && load()} />
+            </div>
+          )}
           {loading ? (
             <div className="text-text-disabled text-[13px]">Loading…</div>
           ) : empty ? (
